@@ -32,6 +32,14 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_float(name: str, default: float) -> float:
+    raw = _env(name, None)
+    try:
+        return float(raw) if raw is not None else default
+    except ValueError:
+        return default
+
+
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -49,6 +57,20 @@ class Settings:
             or "https://api.openai.com/v1"
         )
         self.llm_timeout_seconds: int = _env_int("LLM_TIMEOUT_SECONDS", 15)
+        # Per-request token ceiling for real providers (cost guardrail).
+        self.llm_max_tokens_per_request: int = _env_int(
+            "LLM_MAX_TOKENS_PER_REQUEST", 300
+        )
+        # Daily AI request cap for the public demo. NOTE: enforced in
+        # Phase 7 (rate limiting); the setting is defined here now so
+        # dashboards and quotas can reference it early.
+        self.llm_daily_request_cap: int = _env_int(
+            "LLM_DAILY_REQUEST_CAP", 500
+        )
+        # Confidence below this routes to a human (see rules/escalation.py).
+        self.confidence_threshold: float = _env_float(
+            "CONFIDENCE_THRESHOLD", 0.6
+        )
         self.max_message_length: int = _env_int("MAX_MESSAGE_LENGTH", 2000)
         self.max_body_bytes: int = _env_int("MAX_BODY_BYTES", 65536)
         # Accept either "sqlite:///./data/demo.db" or a bare path.

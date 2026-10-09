@@ -67,9 +67,9 @@ def test_reset_seeds_demo_store(isolated_client):
         policies = conn.execute(
             "SELECT * FROM store_policies WHERE store_id = ?", (DEMO_STORE_ID,)
         ).fetchall()
-        assert len(policies) == 2
+        assert len(policies) == 3
         policy_keys = {row["policy_key"] for row in policies}
-        assert policy_keys == {"returns", "shipping"}
+        assert policy_keys == {"returns", "shipping", "payments"}
         delayed = conn.execute(
             "SELECT * FROM orders WHERE order_ref = '10479'"
         ).fetchone()

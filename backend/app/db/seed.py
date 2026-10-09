@@ -30,6 +30,7 @@ _PRODUCTS = [
                 "material": "Edelstahl",
                 "volumen_ml": 750,
                 "isolierung": "doppelwandig",
+                "bestand_stueck": 42,
             }
         ),
     },
@@ -44,6 +45,7 @@ _PRODUCTS = [
                 "kapazitaet_mah": 30000,
                 "anschluss": "USB-C",
                 "solarpanel": True,
+                "bestand_stueck": 15,
             }
         ),
     },
@@ -58,6 +60,7 @@ _PRODUCTS = [
                 "mahlwerk": "Keramik",
                 "einstellung": "stufenlos",
                 "material": "Edelstahl/Holz",
+                "bestand_stueck": 0,
             }
         ),
     },
@@ -72,6 +75,7 @@ _PRODUCTS = [
                 "dimmbar": True,
                 "farbtemperaturen": 3,
                 "leistung_w": 12,
+                "bestand_stueck": 28,
             }
         ),
     },
@@ -161,6 +165,20 @@ _POLICIES = {
         "tracking_hinweis": (
             "Demo-Umgebung: Sendungsnummern sind fiktiv, "
             "keine Live-Sendungsverfolgung."
+        ),
+        "status": "active",
+    },
+    "payments": {
+        "zahlungsarten": [
+            "PayPal",
+            "Kreditkarte (Visa/Mastercard)",
+            "Kauf auf Rechnung",
+            "Vorkasse per Überweisung",
+        ],
+        "hinweis": (
+            "Zahlungsabwicklung erfolgt über den Zahlungsanbieter des "
+            "Shops; im Demo-Modus werden keine echten Zahlungen "
+            "ausgeführt."
         ),
         "status": "active",
     },

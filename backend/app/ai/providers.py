@@ -39,20 +39,34 @@ Read the customer message and reply with ONLY a single JSON object — no
 markdown, no explanations, no extra text — with exactly these fields:
 
 {
-  "intent": "order_status | product_question | return_request | complaint | human_support | unknown",
+  "intent": "order_status | product_question | return_request | complaint | human_support | shipping_info | payment_question | product_availability | order_cancel | greeting | unknown",
   "confidence": 0.0,
   "order_ref": "string or null",
+  "product_hint": "product name hint or null",
+  "return_reason": "short reason code or null",
+  "language": "de | en | unknown",
   "requires_human": false,
   "reason": "one short sentence"
 }
 
 Rules:
-- "intent" must be exactly one of the six values above.
+- "intent" must be exactly one of the eleven values above.
+  - order_status: where is my order / delivery status questions
+  - shipping_info: shipping costs, delivery time in general (no order ref)
+  - payment_question: payment methods, PayPal, invoice
+  - product_availability: in stock / availability questions
+  - order_cancel: customer wants to cancel (stornieren/widerrufen) an order
+  - greeting: a plain greeting with no other request
 - "confidence" is a number between 0.0 and 1.0.
 - "order_ref" is the order number mentioned by the customer (digits only,
   e.g. "10482"), or null when no order number is present.
+- "product_hint" names the product the customer asks about, or null.
+- "return_reason" is a short code (e.g. "defekt", "passt_nicht",
+  "falsche_ware", "verspaetete_lieferung", "gefaellt_nicht", "sonstiges"),
+  or null when the message is not a return request.
+- "language" is the customer's language: "de", "en", or "unknown".
 - "requires_human" is true for return_request, complaint, human_support,
-  unknown, and whenever you are unsure (confidence below 0.6).
+  order_cancel, unknown, and whenever you are unsure (confidence below 0.6).
 - "reason" briefly explains the classification in plain words.
 """
 
@@ -84,11 +98,27 @@ class MockLLMProvider(LLMProvider):
     (order_status, product_question, return_request, human_support). The
     pipeline validates everything downstream — the mock only suggests an
     intent; lookups, policy checks, and replies are deterministic code.
+
+    Phase 3: extended intent set (shipping_info, payment_question,
+    product_availability, order_cancel, greeting) with German keyword
+    rules, a documented keyword-strength confidence heuristic, and
+    structured extraction fields (product_hint, return_reason, language).
+
+    Confidence calibration (mock):
+      confidence = min(base + 0.03 * (matched_keywords - 1), 0.98)
+    i.e. each rule carries a base confidence and every additional matched
+    keyword from the same rule adds 0.03, capped at 0.98. A single weak
+    keyword match (e.g. just "bestellung") stays near its base; a message
+    matching three shipping keywords scores near the cap. Bare order
+    references score 0.70; no rule match → unknown at 0.35 (always human).
     """
 
     # Checked in order — first matching group wins. German keywords come
     # first inside each group; the English set keeps the predecessor's
-    # contract tests green.
+    # contract tests green. Specific intents (shipping, payment,
+    # availability, cancel) are checked BEFORE the generic order_status
+    # and product_question rules so that e.g. "Versand meiner Bestellung"
+    # routes to shipping_info even though it contains "Bestellung".
     _RULES: tuple[tuple[str, tuple[str, ...], float], ...] = (
         ("human_support", (
             "mitarbeiter", "mensch", "support", "kontakt zum team",
@@ -103,11 +133,36 @@ class MockLLMProvider(LLMProvider):
             "disappointed", "worst", "rude", "unacceptable",
             "horrible",
         ), 0.90),
+        ("order_cancel", (
+            "bestellung stornieren", "stornieren", "stornierung",
+            "widerrufen", "auftrag stornieren", "bestellung abbrechen",
+            "cancel my order", "cancel the order", "cancel order",
+        ), 0.92),
         ("return_request", (
             "zurücksenden", "rücksenden", "retoure", "rückgabe",
-            "zurückgeben", "umtausch", "widerruf", "retourenschein",
+            "zurückgeben", "umtausch", "retourenschein",
             "refund", "money back", "chargeback", "give me my money",
         ), 0.92),
+        ("shipping_info", (
+            "versandkosten", "versandkostenfrei", "lieferzeit",
+            "wie lange dauert der versand", "versanddauer", "lieferdauer",
+            "frachtkosten", "versand",
+            "shipping time", "shipping cost", "shipping costs",
+            "do you ship", "delivery time", "how long does shipping take",
+            "how long does delivery take",
+        ), 0.88),
+        ("payment_question", (
+            "zahlungsarten", "zahlungsart", "paypal", "rechnung", "zahlung",
+            "kreditkarte", "vorkasse", "kauf auf rechnung",
+            "lastschrift", "klarna",
+            "payment method", "payment methods", "pay with", "pay by",
+            "credit card",
+        ), 0.88),
+        ("product_availability", (
+            "auf lager", "lieferbar", "verfügbar", "vorrätig", "vorrat",
+            "noch da", "lagerbestand",
+            "in stock", "availability", "available",
+        ), 0.87),
         ("order_status", (
             "wo bleibt meine bestellung", "bestellstatus", "lieferstatus",
             "sendungsverfolgung", "wo ist mein", "wo ist meine",
@@ -122,11 +177,35 @@ class MockLLMProvider(LLMProvider):
             "farbe", "frage zum", "eigenschaft", "ist diese", "ist dieses",
             "ist dieser", "ist das", "ist der", "ist die",
             "wie groß", "wie viel", "gibt es",
-            "how do", "how can", "what is", "do you ship",
-            "shipping time", "shipping", "delivery",
-            "how long", "return policy", "payment method",
-            "opening hours", "where are you located",
+            "how do", "how can", "what is",
+            "return policy", "opening hours", "where are you located",
         ), 0.85),
+    )
+
+    # Greeting is deliberately checked LAST: "Hallo, wo bleibt meine
+    # Bestellung?" must route to order_status, not greeting. Short "hi"
+    # needs a word boundary so it doesn't match inside other words.
+    _GREETING_PHRASES = (
+        "hallo", "guten tag", "guten morgen", "guten abend",
+        "moin", "servus", "hey",
+    )
+    _GREETING_WORD_RE = re.compile(r"\bhi\b")
+
+    # product_hint extraction: message substrings → demo product name.
+    _PRODUCT_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
+        ("AquaPure 750", ("trinkflasche", "aquapure")),
+        ("Solarbank 30000mAh", ("solarbank", "powerbank")),
+        ("Kaffeemühle manuell", ("kaffeemühle", "kaffeemuehle")),
+        ("LED-Schreibtischlampe", ("schreibtischlampe", "led-lampe", "lampe")),
+    )
+
+    # return_reason extraction for return_request messages.
+    _RETURN_REASONS: tuple[tuple[str, tuple[str, ...]], ...] = (
+        ("defekt", ("defekt", "kaputt", "beschädigt", "beschadigt")),
+        ("passt_nicht", ("passt nicht", "zu klein", "zu groß", "zu gross")),
+        ("falsche_ware", ("falsch", "vertauscht", "falsche")),
+        ("verspaetete_lieferung", ("spät", "spat", "verspätet", "verspatet", "zu lange")),
+        ("gefaellt_nicht", ("nicht gefallen", "gefällt nicht", "gefallt nicht")),
     )
 
     # Order references: optional '#', 4–6 digits (e.g. "#10482", "10482").
@@ -137,17 +216,44 @@ class MockLLMProvider(LLMProvider):
         order_match = self._ORDER_REF_RE.search(message)
         order_ref = order_match.group(1) if order_match else None
 
-        for intent, keywords, confidence in self._RULES:
-            if any(k in text for k in keywords):
+        for intent, keywords, base_confidence in self._RULES:
+            matched = [k for k in keywords if k in text]
+            if matched:
+                # Keyword-strength heuristic: more matched keywords from
+                # the same rule → higher confidence, capped at 0.98.
+                confidence = min(
+                    base_confidence + 0.03 * (len(matched) - 1), 0.98
+                )
                 return json.dumps({
                     "intent": intent,
-                    "confidence": confidence,
+                    "confidence": round(confidence, 2),
                     "order_ref": order_ref,
+                    "product_hint": self._extract_product_hint(text),
+                    "return_reason": self._extract_return_reason(text)
+                    if intent == "return_request" else None,
+                    "language": _detect_language(text),
                     "requires_human": intent in {
                         "return_request", "complaint", "human_support",
+                        "order_cancel",
                     },
-                    "reason": f"[demo rule-based classifier] matched '{intent}' keywords",
+                    "reason": (
+                        "[demo rule-based classifier] matched "
+                        f"'{intent}' keywords: {', '.join(matched[:3])}"
+                    ),
                 })
+
+        # Greeting last: only when nothing else matched.
+        if any(p in text for p in self._GREETING_PHRASES) or self._GREETING_WORD_RE.search(text):
+            return json.dumps({
+                "intent": "greeting",
+                "confidence": 0.90,
+                "order_ref": order_ref,
+                "product_hint": None,
+                "return_reason": None,
+                "language": _detect_language(text),
+                "requires_human": False,
+                "reason": "[demo rule-based classifier] greeting detected",
+            })
 
         # Fallback: any bare order reference is treated as an order question.
         if order_ref:
@@ -155,6 +261,9 @@ class MockLLMProvider(LLMProvider):
                 "intent": "order_status",
                 "confidence": 0.70,
                 "order_ref": order_ref,
+                "product_hint": None,
+                "return_reason": None,
+                "language": _detect_language(text),
                 "requires_human": False,
                 "reason": "[demo rule-based classifier] order number detected",
             })
@@ -163,9 +272,52 @@ class MockLLMProvider(LLMProvider):
             "intent": "unknown",
             "confidence": 0.35,
             "order_ref": order_ref,
+            "product_hint": None,
+            "return_reason": None,
+            "language": _detect_language(text),
             "requires_human": True,
             "reason": "[demo rule-based classifier] no rule matched",
         })
+
+    @classmethod
+    def _extract_product_hint(cls, text: str) -> str | None:
+        for name, keywords in cls._PRODUCT_HINTS:
+            if any(k in text for k in keywords):
+                return name
+        return None
+
+    @classmethod
+    def _extract_return_reason(cls, text: str) -> str:
+        for code, keywords in cls._RETURN_REASONS:
+            if any(k in text for k in keywords):
+                return code
+        return "sonstiges"
+
+
+_DE_WORD_RE = re.compile(r"[a-zäöüß]+")
+
+
+def _detect_language(text: str) -> str:
+    """Deterministic de/en language guess for the mock classifier."""
+    de_tokens = {
+        "der", "die", "das", "und", "ist", "ich", "meine", "mein", "nicht",
+        "bitte", "wie", "was", "wo", "hallo", "danke", "bestellung", "mit",
+        "für", "eine", "sind", "haben", "möchte", "kann",
+    }
+    en_tokens = {
+        "the", "and", "is", "are", "my", "package", "order", "please",
+        "want", "never", "arrived", "money", "back", "hello", "can", "you",
+    }
+    tokens = set(_DE_WORD_RE.findall(text.lower()))
+    if re.search(r"[äöüß]", text.lower()):
+        return "de"
+    de_hits = len(tokens & de_tokens)
+    en_hits = len(tokens & en_tokens)
+    if de_hits > en_hits:
+        return "de"
+    if en_hits > de_hits:
+        return "en"
+    return "unknown"
 
 
 class OpenAICompatibleProvider(LLMProvider):
@@ -187,7 +339,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 {"role": "user", "content": message},
             ],
             "temperature": 0.0,   # deterministic output for classification
-            "max_tokens": 300,
+            "max_tokens": self._settings.llm_max_tokens_per_request,
         }).encode("utf-8")
 
         request = urllib.request.Request(
@@ -254,7 +406,7 @@ class GeminiProvider(LLMProvider):
                 {"role": "user", "content": message},
             ],
             "temperature": 0.0,   # deterministic output for classification
-            "max_tokens": 300,
+            "max_tokens": self._settings.llm_max_tokens_per_request,
         }).encode("utf-8")
 
         request = urllib.request.Request(

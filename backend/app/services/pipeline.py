@@ -1,14 +1,20 @@
-"""Chat pipeline (Phase 2): full deterministic workflow.
+"""Chat pipeline (Phase 3): full deterministic workflow.
 
-Pipeline: validate → classify (provider) → extract entities →
+Pipeline: validate → classify (provider) → STRICT validation of the
+provider output into a ``Classification`` schema → extract entities →
 deterministic rules/lookups → generate German reply from verified data →
 validate output → log events → persist conversation.
 
 Rules (iron-clad):
 - The provider only classifies and suggests an intent. It never executes
   actions, never reads the database, never decides eligibility.
+- All downstream code uses the validated ``Classification`` schema from
+  ``services/classification.py`` — never raw model text.
 - All data shown to the customer comes from the SQLite demo store via
   ``db/repositories.py`` + ``rules/`` — never from the provider output.
+- Escalation policy (rules/escalation.py): ALWAYS_HUMAN intents
+  {complaint, order_cancel, human_support, unknown} always go to a human;
+  confidence < 0.6 → human with reason "low_confidence".
 - Every ``workflow_events`` row is logged only when the corresponding
   operation actually executed. A skipped step leaves no event behind.
 - Unknown order/product/attribute → honest German clarification or human
@@ -26,9 +32,14 @@ from ..ai.providers import LLMError, LLMProvider
 from ..config import Settings
 from ..db.repositories import EventRepository, TicketRepository
 from ..rules import product_rules
-from ..rules.escalation import should_escalate
+from ..rules.escalation import (
+    REASON_ALWAYS_HUMAN,
+    REASON_LOW_CONFIDENCE,
+    decide_escalation,
+)
 from ..rules.order_rules import lookup_order, normalize_order_ref
 from ..rules.return_policy import evaluate_return_eligibility
+from .classification import Classification, validate_classification
 from .intent import Intent
 
 DEMO_STORE_ID = "demo-muster-shop"
@@ -46,6 +57,7 @@ EVENT_ESCALATED = "escalated"
 EVENT_RULES_APPLIED = "rules_applied"
 EVENT_RESPONSE_GENERATED = "response_generated"
 EVENT_INTERACTION_LOGGED = "interaction_logged"
+EVENT_STORE_INFO = "store_info"
 
 _EVENT_LABELS = {
     EVENT_MESSAGE_RECEIVED: "Anfrage empfangen",
@@ -60,6 +72,7 @@ _EVENT_LABELS = {
     EVENT_RULES_APPLIED: "Geschäftsregeln angewendet",
     EVENT_RESPONSE_GENERATED: "Antwort erstellt",
     EVENT_INTERACTION_LOGGED: "Supportvorgang protokolliert",
+    EVENT_STORE_INFO: "Shop-Informationen abgerufen",
 }
 
 _DEMO_DISCLAIMER = "Hinweis: Demo-Umgebung — alle Daten sind simuliert."
@@ -84,28 +97,6 @@ class PipelineResult:
     ticket_id: int | str | None = None
     provider: str = "mock"
     escalated: bool = False
-
-
-def _parse_classification(raw: str) -> tuple[str, float, str | None, bool]:
-    """Parse the provider's raw JSON into (intent, confidence, order_ref,
-    requires_human). Unparseable output → unknown with 0.0 confidence."""
-    try:
-        parsed = json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return Intent.UNKNOWN.value, 0.0, None, True
-    intent = parsed.get("intent")
-    if intent not in {i.value for i in Intent}:
-        intent = Intent.UNKNOWN.value
-    try:
-        confidence = float(parsed.get("confidence", 0.0))
-    except (TypeError, ValueError):
-        confidence = 0.0
-    confidence = max(0.0, min(1.0, confidence))
-    order_ref = parsed.get("order_ref") or parsed.get("order_id")
-    if order_ref is not None and not isinstance(order_ref, str):
-        order_ref = str(order_ref)
-    requires_human = bool(parsed.get("requires_human", False))
-    return intent, confidence, order_ref, requires_human
 
 
 def _de_date(iso: str | None) -> str | None:
@@ -336,8 +327,105 @@ class _Pipeline:
             f"{_DEMO_DISCLAIMER}"
         )
 
-    def handle_return_request(self, order_ref: str | None,
-                              intent: str) -> str:
+    def handle_greeting(self) -> str:
+        # A plain greeting: friendly answer, no ticket, no escalation.
+        return (
+            "Hallo und herzlich willkommen beim Demo-Shop „Muster-Shop "
+            "GmbH“! Wie kann ich Ihnen helfen? Sie können mich zum Beispiel "
+            "nach dem Status Ihrer Bestellung fragen, nach Versandkosten "
+            "oder nach unseren Zahlungsarten. "
+            f"{_DEMO_DISCLAIMER}"
+        )
+
+    def handle_shipping_info(self) -> str:
+        policy = _load_policy(self.conn, self.store_id, "shipping")
+        self.log(EVENT_STORE_INFO, {"policy_key": "shipping"})
+        if not policy:
+            return (
+                "Zu den Versandkosten liegen mir in dieser Demo leider keine "
+                "Informationen vor — ich erfinde keine Angaben. Soll ich "
+                "Ihre Frage an einen Mitarbeiter weitergeben? "
+                f"{_DEMO_DISCLAIMER}"
+            )
+        self.log(EVENT_RULES_APPLIED, {"policy_key": "shipping"})
+        parts = []
+        kosten = policy.get("versandkosten_eur")
+        frei_ab = policy.get("versandkostenfrei_ab_eur")
+        if kosten is not None:
+            parts.append(
+                f"Versandkosten: {_format_eur(int(round(kosten * 100)))}"
+            )
+        if frei_ab is not None:
+            parts.append(
+                f"versandkostenfrei ab {_format_eur(int(round(frei_ab * 100)))}"
+            )
+        lieferzeit = policy.get("lieferzeit_werktage")
+        if lieferzeit:
+            parts.append(f"Lieferzeit: {lieferzeit} Werktage")
+        partner = policy.get("versandpartner") or []
+        if partner:
+            parts.append(f"Versandpartner: {', '.join(partner)}")
+        tracking = policy.get("tracking_hinweis")
+        if tracking:
+            parts.append(tracking)
+        parts.append(_DEMO_DISCLAIMER)
+        return " ".join(p if p.endswith(".") else p + "." for p in parts)
+
+    def handle_payment_question(self) -> str:
+        policy = _load_policy(self.conn, self.store_id, "payments")
+        self.log(EVENT_STORE_INFO, {"policy_key": "payments"})
+        if not policy:
+            return (
+                "Zu den Zahlungsarten liegen mir in dieser Demo leider keine "
+                "Informationen vor — ich erfinde keine Angaben. Soll ich "
+                "Ihre Frage an einen Mitarbeiter weitergeben? "
+                f"{_DEMO_DISCLAIMER}"
+            )
+        self.log(EVENT_RULES_APPLIED, {"policy_key": "payments"})
+        arten = policy.get("zahlungsarten") or []
+        hinweis = policy.get("hinweis") or ""
+        return (
+            "Wir akzeptieren folgende Zahlungsarten: "
+            f"{', '.join(arten)}. {hinweis} "
+            f"{_DEMO_DISCLAIMER}"
+        )
+
+    def handle_product_availability(self) -> str:
+        self.log(EVENT_PRODUCT_SEARCH, {"query": self.message[:80]})
+        product = product_rules.find_product(
+            self.conn, self.store_id, self.message
+        )
+        if product is None:
+            return (
+                "Für welches Produkt möchten Sie den Bestand prüfen? Nennen "
+                "Sie mir zum Beispiel die Trinkflasche „AquaPure 750“. "
+                f"{_DEMO_DISCLAIMER}"
+            )
+        name = product.get("name") or "das Produkt"
+        stock = product_rules.stock_level(product)
+        self.log(EVENT_RULES_APPLIED, {"product": name, "stock": stock})
+        if stock is None:
+            return (
+                f"Zu {name} liegen mir leider keine Bestandsinformationen "
+                "vor — ich erfinde keine Angaben. Soll ich Ihre Frage an "
+                "einen Mitarbeiter weitergeben? "
+                f"{_DEMO_DISCLAIMER}"
+            )
+        if stock > 0:
+            return (
+                f"Gute Nachricht: {name} ist derzeit auf Lager "
+                f"(Demo-Bestand: {stock} Stück). "
+                f"{_DEMO_DISCLAIMER}"
+            )
+        return (
+            f"{name} ist derzeit leider nicht auf Lager. Soll ich Ihre "
+            "Anfrage an einen Mitarbeiter weitergeben — zum Beispiel für "
+            f"eine Benachrichtigung bei Wiederverfügbarkeit? "
+            f"{_DEMO_DISCLAIMER}"
+        )
+
+    def handle_return_request(self, order_ref: str | None, intent: str,
+                              classification: Classification) -> str:
         if not order_ref:
             return (
                 "Gerne nehme ich Ihre Retoure auf. Bitte nennen Sie mir Ihre "
@@ -375,8 +463,16 @@ class _Pipeline:
             cur = self.conn.execute(
                 "INSERT INTO return_requests (store_id, order_ref, status, reason) "
                 "VALUES (?, ?, 'pending_review', ?)",
-                (self.store_id, order_ref,
-                 f"Demo-Retourenantrag, {verdict}"),
+                (
+                    self.store_id,
+                    order_ref,
+                    f"Demo-Retourenantrag, {verdict}"
+                    + (
+                        f", Grund: {classification.return_reason}"
+                        if classification.return_reason
+                        else ""
+                    ),
+                ),
             )
             self.log(EVENT_RETURN_REQUEST_CREATED, {
                 "return_request_id": cur.lastrowid, "order_ref": order_ref,
@@ -439,44 +535,55 @@ class _Pipeline:
             f"Ihnen melden. {_DEMO_DISCLAIMER}"
         )
 
-    def handle_escalation(self, intent: str, confidence: float,
-                          order_ref: str | None,
-                          requires_human: bool) -> str:
+    def handle_escalation(self, classification: Classification,
+                          reason_code: str) -> str:
+        """Route to a human: create a ticket and explain it honestly.
+
+        ``reason_code`` is one of the ``rules/escalation.py`` codes
+        ("low_confidence", "always_human", "classifier_requires_human")
+        and is stored on the ticket.
+        """
+        intent = classification.intent
+        order_ref = normalize_order_ref(classification.order_ref)
         if order_ref:
-            normalized = normalize_order_ref(order_ref)
-            self.log(EVENT_ORDER_REF_EXTRACTED, {"order_ref": normalized})
-            order = lookup_order(self.conn, self.store_id, normalized)
+            self.log(EVENT_ORDER_REF_EXTRACTED, {"order_ref": order_ref})
+            order = lookup_order(self.conn, self.store_id, order_ref)
             self.log(EVENT_ORDER_LOOKUP, {
-                "order_ref": normalized, "found": order is not None,
+                "order_ref": order_ref, "found": order is not None,
             })
             if order is not None:
                 self.order = order
 
-        reason = (
-            "requires_human flag des Klassifikators"
-            if requires_human
-            else f"Konfidenz {confidence:.2f} unter Schwelle oder kritische Absicht"
-        )
         self.create_ticket(
-            intent, normalize_order_ref(order_ref),
+            intent, order_ref,
             summary=self.message[:200],
-            escalation_reason=reason,
+            escalation_reason=reason_code,
             recommended_action="Mitarbeiter antwortet dem Kunden",
-            priority="high" if intent == "complaint" else "normal",
+            priority="high" if intent in (
+                Intent.COMPLAINT.value, Intent.ORDER_CANCEL.value
+            ) else "normal",
         )
         self.escalated = True
         self.log(EVENT_ESCALATED, {
-            "ticket_id": self.ticket_id, "reason": reason,
+            "ticket_id": self.ticket_id, "reason": reason_code,
         })
 
-        if intent == "unknown":
+        if reason_code == REASON_LOW_CONFIDENCE:
+            return (
+                "Ich bin mir bei Ihrer Anfrage nicht ganz sicher und möchte "
+                "Ihnen keine falsche Auskunft geben. Ich habe ein Ticket "
+                f"#{self.ticket_id} erstellt — ein Mitarbeiter wird sich so "
+                "bald wie möglich bei Ihnen melden. "
+                f"{_DEMO_DISCLAIMER}"
+            )
+        if intent == Intent.UNKNOWN.value:
             return (
                 "Ich bin mir nicht sicher, ob ich Ihre Anfrage richtig "
                 f"verstanden habe. Ich habe ein Ticket #{self.ticket_id} "
                 "erstellt — ein Mitarbeiter wird sich so bald wie möglich "
                 f"bei Ihnen melden. {_DEMO_DISCLAIMER}"
             )
-        if intent == "complaint":
+        if intent == Intent.COMPLAINT.value:
             return (
                 "Das tut mir leid zu hören. Ich habe Ihr Anliegen mit hoher "
                 f"Priorität an unser Team weitergegeben (Ticket "
@@ -484,6 +591,26 @@ class _Pipeline:
                 "möglich bei Ihnen melden — wir versprechen nichts, was wir "
                 f"nicht geprüft haben. {_DEMO_DISCLAIMER}"
             )
+        if intent == Intent.ORDER_CANCEL.value:
+            parts = [
+                "Verstanden — eine Stornierung muss von einem Mitarbeiter "
+                "bestätigt werden, vor allem wenn die Bestellung bereits "
+                "versendet ist.",
+            ]
+            if self.order is not None:
+                status_de = _STATUS_DE.get(
+                    self.order.get("status"), self.order.get("status")
+                )
+                parts.append(
+                    f"Ihre Bestellung #{self.order['order_ref']} ist "
+                    f"derzeit {status_de}."
+                )
+            parts.append(
+                f"Ich habe ein Ticket #{self.ticket_id} erstellt — ein "
+                "Mitarbeiter prüft die Stornierung so bald wie möglich. "
+                f"{_DEMO_DISCLAIMER}"
+            )
+            return " ".join(parts)
         return (
             "Verstanden — ich gebe Ihr Anliegen an unser Team weiter "
             f"(Ticket #{self.ticket_id}). Ein Mitarbeiter wird sich so bald "
@@ -518,36 +645,66 @@ def run_pipeline(
     )
     pipe.log(EVENT_MESSAGE_RECEIVED, {"length": len(message)})
 
-    # --- Step 2: classify via provider ------------------------------------
+    # --- Step 2: classify via provider + STRICT validation ----------------
+    # validate_classification() never raises for bad model output — any
+    # invalid JSON/intent/confidence/order_ref → safe fallback (unknown,
+    # 0.0, requires_human=True). All downstream code uses this validated
+    # schema, never raw model text.
     raw = provider.classify(message)  # may raise LLMError
-    intent, confidence, order_ref, requires_human = _parse_classification(raw)
+    classification = validate_classification(raw)
     pipe.log(EVENT_INTENT_CLASSIFIED, {
-        "intent": intent, "confidence": confidence,
-        "order_ref": order_ref,
+        "intent": classification.intent,
+        "confidence": classification.confidence,
+        "order_ref": classification.order_ref,
+        "product_hint": classification.product_hint,
+        "return_reason": classification.return_reason,
+        "language": classification.language,
         "provider": type(provider).__name__,
+        "validation_reason": classification.reason,
     })
 
     # --- Step 3: deterministic action plan --------------------------------
-    normalized_ref = normalize_order_ref(order_ref)
-    if intent == Intent.ORDER_STATUS.value:
-        if should_escalate(intent, confidence) or requires_human:
-            reply = pipe.handle_escalation(
-                intent, confidence, normalized_ref, requires_human)
-        else:
-            reply = pipe.handle_order_status(normalized_ref)
+    # Escalation policy: ALWAYS_HUMAN intents and confidence below the
+    # threshold always go to a human — regardless of what the classifier
+    # claimed. The classifier's own requires_human flag is honored too.
+    escalate, esc_reason = decide_escalation(
+        classification.intent,
+        classification.confidence,
+        classification.requires_human,
+        threshold=settings.confidence_threshold,
+    )
+    # return_request is deliberately NOT in ALWAYS_HUMAN: its triage
+    # handler always creates a ticket for staff review, which IS the
+    # human handoff for the return workflow. The classifier's
+    # requires_human flag must not divert it to the generic escalation
+    # path — only genuine uncertainty (low confidence) does.
+    if classification.intent == Intent.RETURN_REQUEST.value and esc_reason != REASON_LOW_CONFIDENCE:
+        escalate = False
+    normalized_ref = normalize_order_ref(classification.order_ref)
+    intent = classification.intent
+
+    if escalate:
+        # Reason code "low_confidence" when the threshold fired, else
+        # "always_human" / "classifier_requires_human".
+        reply = pipe.handle_escalation(classification, esc_reason or REASON_ALWAYS_HUMAN)
+    elif intent == Intent.GREETING.value:
+        reply = pipe.handle_greeting()
+    elif intent == Intent.SHIPPING_INFO.value:
+        reply = pipe.handle_shipping_info()
+    elif intent == Intent.PAYMENT_QUESTION.value:
+        reply = pipe.handle_payment_question()
+    elif intent == Intent.PRODUCT_AVAILABILITY.value:
+        reply = pipe.handle_product_availability()
+    elif intent == Intent.ORDER_STATUS.value:
+        reply = pipe.handle_order_status(normalized_ref)
     elif intent == Intent.PRODUCT_QUESTION.value:
-        if should_escalate(intent, confidence) or requires_human:
-            reply = pipe.handle_escalation(
-                intent, confidence, normalized_ref, requires_human)
-        else:
-            reply = pipe.handle_product_question()
+        reply = pipe.handle_product_question()
     elif intent == Intent.RETURN_REQUEST.value:
         # Returns always create a structured ticket for staff review —
         # this IS the human handoff for the return workflow.
-        reply = pipe.handle_return_request(normalized_ref, intent)
-    else:  # complaint, human_support, unknown
-        reply = pipe.handle_escalation(
-            intent, confidence, normalized_ref, requires_human)
+        reply = pipe.handle_return_request(normalized_ref, intent, classification)
+    else:  # defensive: should never happen after validation
+        reply = pipe.handle_escalation(classification, REASON_ALWAYS_HUMAN)
 
     # --- Step 4: persist assistant message + closing events ----------------
     conn.execute(
@@ -562,8 +719,8 @@ def run_pipeline(
 
     return PipelineResult(
         conversation_id=pipe.conversation_id,
-        intent=intent,
-        confidence=confidence,
+        intent=classification.intent,
+        confidence=classification.confidence,
         order_ref=normalized_ref,
         reply_de=reply,
         order=_minimal_order(pipe.order),

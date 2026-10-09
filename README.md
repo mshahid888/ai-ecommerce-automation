@@ -44,16 +44,43 @@ Phase 2: Demo-Store + deutschsprachiger Kundensupport-Chat, Ende-zu-Ende verdrah
   - `/dashboard` — Platzhalter-Operations-Dashboard (Demo-Kennzahlen, echte
     Ereignisliste ab Backend)
   - `/tickets` — Ticket-Liste aus dem Backend (mit Empty State)
-- **Tests:** 33 pytest-Tests, alle grün (Health, Provider-Vertrag, Validatoren,
-  Store-Isolation, Demo-Reset, Chat-Pipeline: alle 4 Szenarien + Reset).
+- **Tests:** 62 pytest-Tests, alle grün (Health, Provider-Vertrag, Validatoren,
+  Store-Isolation, Demo-Reset, Chat-Pipeline: alle 4 Szenarien + Reset,
+  Phase 3: 11 Intents, Konfidenz-Kalibrierung, Eskalations-Policy,
+  strikte Klassifikations-Validierung inkl. Stub-Provider-Fallbacks,
+  deutsche Edge Cases).
+
+## Phase 3 (verifiziert) — Klassifikationstiefe + Eskalations-Policy
+
+- 11 Intents: `order_status, product_question, return_request, complaint,
+  human_support, shipping_info, payment_question, product_availability,
+  order_cancel, greeting, unknown` (Mock: deutsche Keyword-Regeln)
+- `shipping_info`: Versandkosten/-zeit aus der `shipping`-Policy
+  (4,99 €, frei ab 50 €, 2–4 Werktage, DHL/Hermes)
+- `payment_question`: Zahlungsarten aus der `payments`-Policy
+  (PayPal, Kreditkarte, Kauf auf Rechnung, Vorkasse)
+- `product_availability`: Demo-Bestand pro Produkt (`bestand_stueck`),
+  ehrlich „nicht auf Lager" bei 0
+- `order_cancel` → ALWAYS_HUMAN: Ticket + Bestellkontext, keine automatische
+  Stornierung
+- `greeting`: freundliche Begrüßung, kein Ticket, keine Eskalation
+- Strikte Validierung (`services/classification.py`, Ansatz aus dem
+  Vorgängerprojekt): Intent im Enum, Konfidenz 0–1, Bestellnummer-Regex —
+  **jeder** Fehler → `safe_fallback()` → Mensch. Niemals Crash, niemals Raten.
+- Eskalations-Policy: `ALWAYS_HUMAN = {complaint, order_cancel,
+  human_support, unknown}`, Konfidenz < 0,6 → Ticket mit Grund
+  `"low_confidence"` + ehrliche deutsche Erklärung
+- Validiertes Schema (intent, confidence, order_ref, product_hint,
+  return_reason, language) — Downstream nutzt nur dieses, nie rohen
+  Modell-Text
+- Gemini-Provider implementiert (Skill-Credential-Pattern); Live-Test in
+  dieser Umgebung durch Modell-Überlastung (HTTP 503) blockiert — Mock
+  bleibt Default
 
 ## Was noch fehlt (ehrlich)
 
 - `services/intent.py::classify()` bleibt ein dokumentierter Stub (die Pipeline
   nutzt den konfigurierten Provider).
-- Die Mock-Klassifikation ist regelbasiert (deutsche Keywords) — Phase 3
-  vertieft sie; echte Provider (`gemini`/`openai_compatible`) sind
-  anschlussfertig.
 - Mehrstufige Dialoge (Kontext über Nachrichten hinweg) sind noch nicht
   implementiert — jede Nachricht startet eine eigene Konversation.
 - Rate Limiting, Quotas, Admin-API-Keys kommen in Phase 7 (Pflicht vor
@@ -105,6 +132,9 @@ cd ../frontend && npm run build && npm run lint
 | `DATABASE_URL` | `sqlite:///./data/demo.db` | SQLite-Pfad |
 | `DEMO_MODE` | `true` | `POST /api/demo/reset` nur wenn `true` |
 | `CORS_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | Komma-getrennte Origins für das Frontend |
+| `CONFIDENCE_THRESHOLD` | `0.6` | Konfidenzschwelle für Eskalation |
+| `LLM_MAX_TOKENS_PER_REQUEST` | `300` | Token-Ceiling pro echtem Provider-Aufruf |
+| `LLM_DAILY_REQUEST_CAP` | `500` | Tages-Quota (Durchsetzung erst Phase 7) |
 
 ## Struktur
 

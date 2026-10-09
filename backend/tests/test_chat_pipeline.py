@@ -344,7 +344,7 @@ def test_demo_reset_restores_seed_data(isolated_client):
     try:
         assert _count(conn, "orders") == 4
         assert _count(conn, "products") == 4
-        assert _count(conn, "store_policies") == 2
+        assert _count(conn, "store_policies") == 3
         assert (
             _count(
                 conn, "orders",

@@ -40,6 +40,9 @@ _UNIT_SUFFIXES = {
     "leistung_w": "W",
 }
 
+# Special stock display (not a plain unit suffix).
+_STOCK_KEY = "bestand_stueck"
+
 # German display labels for known attribute keys.
 _ATTRIBUTE_LABELS = {
     "spuelmaschinengeeignet": "spülmaschinengeeignet",
@@ -55,6 +58,7 @@ _ATTRIBUTE_LABELS = {
     "farbtemperaturen": "Farbtemperaturen",
     "leistung_w": "Leistung",
     "farbe": "Farbe",
+    "bestand_stueck": "Verfügbarkeit",
 }
 
 
@@ -108,10 +112,25 @@ def detect_requested_attributes(message: str) -> list[str]:
 
 def format_attribute_value(key: str, value: Any) -> str:
     """Render an attribute value in German demo-suitable text."""
+    if key == _STOCK_KEY:
+        try:
+            units = int(value)
+        except (TypeError, ValueError):
+            return str(value)
+        return f"{units} Stück auf Lager" if units > 0 else "derzeit nicht auf Lager"
     if isinstance(value, bool):
         return "ja" if value else "nein"
     unit = _UNIT_SUFFIXES.get(key)
     return f"{value} {unit}" if unit else str(value)
+
+
+def stock_level(product: dict[str, Any]) -> int | None:
+    """Return the product's demo stock level, or None when not configured."""
+    attrs = product_attributes(product)
+    try:
+        return int(attrs[_STOCK_KEY])
+    except (TypeError, ValueError, KeyError):
+        return None
 
 
 def attribute_label(key: str) -> str:

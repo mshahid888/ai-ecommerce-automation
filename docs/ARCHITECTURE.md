@@ -37,29 +37,39 @@
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Pipeline (Phase 2 — vollständig, deterministisch)
+## Pipeline (Phase 3 — vollständig, deterministisch, validiert)
 
 ```
 Kundennachricht
   → 1. Input-Validierung            (validators.py — Caps, Typen)
   → 2. Intent-Klassifikation        (ai/providers.py — LLM NUR hier;
-                                     Mock: deutsche Keyword-Regeln)
-  → 3. Entitäts-Extraktion          (Regex #?\d{4,6} + Normalisierung,
-                                     services/pipeline.py)
-  → 4. Geschäftsregeln              (rules/ — reines Python, KEIN LLM:
+                                     Mock: deutsche Keyword-Regeln, 11 Intents)
+  → 3. STRIKTE Validierung          (services/classification.py — validiertes
+                                     Classification-Schema; JEDER Fehler →
+                                     safe_fallback → Mensch. Niemals Crash,
+                                     niemals Raten)
+  → 4. Entitäts-Extraktion          (Regex + Normalisierung,
+                                     aus dem VALIDERTEN Schema)
+  → 5. Eskalations-Policy           (rules/escalation.py — deterministisch:
+                                     ALWAYS_HUMAN-Intents, Konfidenz < 0.6 →
+                                     "low_confidence", requires_human-Flag)
+  → 6. Geschäftsregeln              (rules/ — reines Python, KEIN LLM:
                                      order_rules, product_rules,
                                      return_policy, escalation)
-  → 5. Autorisierter Datenzugriff    (repositories — immer mit store_id;
+  → 7. Autorisierter Datenzugriff    (repositories — immer mit store_id;
                                      Orders, Produkte, Policies)
-  → 6. Aktionsauswahl               (services/pipeline.py — je Intent:
-                                     order_status / product_question /
-                                     return_request / escalation)
-  → 7. Antwort-Generierung          (deutsche Templates, ausschließlich aus
+  → 8. Aktionsauswahl               (services/pipeline.py — je Intent:
+                                     greeting / shipping_info /
+                                     payment_question /
+                                     product_availability / order_status /
+                                     product_question / return_request /
+                                     escalation)
+  → 9. Antwort-Generierung          (deutsche Templates, ausschließlich aus
                                      verifizierten Demo-Daten; Unbekanntes →
                                      ehrliche Klärung/Eskalation)
-  → 8. Output-Validierung           (keine erfundenen Daten: Antworten werden
+  → 10. Output-Validierung          (keine erfundenen Daten: Antworten werden
                                      nur aus DB-Zeilen gebaut)
-  → 9. Event-Logging                (workflow_events — nur echte Schritte)
+  → 11. Event-Logging               (workflow_events — nur echte Schritte)
   → UI-Update (Timeline aus echten Events)
 ```
 
@@ -80,7 +90,7 @@ gibt es einen ehrlichen Fehlerzustand — keinen erfundenen Erfolg.
 | Nachricht validieren | `validators.py` | nein |
 | Absicht erkennen | `ai/providers.py` | **ja** (einzige Stelle) |
 | Bestellung nachschlagen | `db/repositories.py` | nein |
-| Eskalieren? | `rules/escalation.py` | nein (Regel: Konfidenz < 0.6 o. Beschwerde/Mensch) |
+| Eskalieren? | `rules/escalation.py` + `services/classification.py` | nein (deterministisch: ALWAYS_HUMAN-Intents {complaint, order_cancel, human_support, unknown}, Konfidenz < 0.6 → `"low_confidence"`-Ticket, requires_human-Flag des validierten Schemas) |
 | Retourenberechtigung | `rules/return_policy.py` | nein (deterministische Engine gegen `store_policies`, vorläufige Prüfung; Freigabe = Mensch) |
 | Produkt suchen / Attribut beantworten | `rules/product_rules.py` | nein (Token-Match über Katalog, Attribute nur aus `attributes_json`) |
 | Antworttext formulieren | `services/pipeline.py` (deutsche Templates aus DB-Daten) | nein (Mock: nur Klassifikation) |
@@ -97,10 +107,14 @@ get_provider(config)  # via LLM_PROVIDER: mock | openai_compatible | gemini
 ```
 
 - **mock** (Standard): deterministische, regelbasierte Demo-Klassifikation.
-  Kein Netzwerk, keine Kosten. Vertrag: JSON mit
-  `intent, confidence, order_id/order_ref, requires_human, reason`
-  (5 Felder — exakt der Vertrag des Vorgängerprojekts
-  `ai-customer-support-automation`).
+  Kein Netzwerk, keine Kosten. 11 Intents (order_status, product_question,
+  return_request, complaint, human_support, shipping_info, payment_question,
+  product_availability, order_cancel, greeting, unknown). Vertrag: JSON mit
+  `intent, confidence, order_ref, product_hint, return_reason, language,
+  requires_human, reason`. Konfidenz-Kalibrierung: dokumentierte
+  Keyword-Stärke-Heuristik (Basis pro Regel + 0,03 je zusätzlichem Treffer,
+  Cap 0,98). Die Pipeline validiert die Ausgabe strikt
+  (`services/classification.py`) — der Mock „schlägt nur vor".
 - **openai_compatible**: OpenAI-Style `/chat/completions` via stdlib-urllib,
   `temperature=0.0`, `max_tokens=300`. Key nur aus `LLM_API_KEY`.
 - **gemini**: nutzt das verbundene `custom.google-gemini`-Credential über den
@@ -110,6 +124,12 @@ get_provider(config)  # via LLM_PROVIDER: mock | openai_compatible | gemini
   Laufzeit als kurzlebiges Surrogat angehängt. Der Import ist abgesichert, damit
   das Backend ohne den Helper lauffähig bleibt (Fehler nur bei tatsächlicher
   Verwendung → ehrlicher 502-JSON-Pfad in `/api/chat`).
+  Phase-3-Status: Credential-Helper lädt, Surrogat wird an
+  `generativelanguage.googleapis.com` angehängt, Modell `gemini-3.8-flash`
+  (Modellname von der Google-API bestätigt). Live-Verifikation in dieser
+  Umgebung nicht möglich: anhaltende HTTP-503-Antworten („high demand") —
+  kein Auth-Problem (kein 401/403), sondern Modell-Kapazität. Default bleibt
+  `mock`; Gemini wird nach Kapazitätsfreigabe erneut getestet.
 
 ## Datenmodell (SQLite, Mehrmandanten-fähig)
 
@@ -123,11 +143,14 @@ return_requests · workflow_events · integration_credentials · store_policies`
   filtert danach → **kein Cross-Store-Zugriff möglich** (per Test verifiziert).
 - Demo-Seed (`db/seed.py`): Shop `demo-muster-shop` („Muster-Shop GmbH",
   `is_demo=1`), 4 Produkte (Trinkflasche „AquaPure 750" mit
-  `spuelmaschinengeeignet=true` u.a. Attributen), 2 fiktive Kunden,
+  `spuelmaschinengeeignet=true` u.a. Attributen, je Produkt ein Demo-Bestand
+  `bestand_stueck` — z. B. Kaffeemühle manuell: 0), 2 fiktive Kunden,
   Bestellungen #10482 (versendet, DHL, fiktive Referenz `DEMO-TRK-10482`),
   #10483 (in Bearbeitung), #10471 (zugestellt), #10479 (verzögert),
-  2 Policies (`returns`: 30-Tage-Frist, Bedingungen, Ausnahmen,
-  Rücksendeadresse; `shipping`: Kosten, Lieferzeit). Policies sind explizite
+  3 Policies (`returns`: 30-Tage-Frist, Bedingungen, Ausnahmen,
+  Rücksendeadresse; `shipping`: Kosten 4,99 €, frei ab 50 €, Lieferzeit
+  2–4 Werktage; `payments`: PayPal, Kreditkarte, Kauf auf Rechnung,
+  Vorkasse). Policies sind explizite
   Konfigurationszeilen — niemals in Prompts hardcodiert.
   `POST /api/demo/reset` löscht und seedet **nur** Demo-Zeilen (`is_demo=1`).
 
