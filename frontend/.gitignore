@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# Committed templates contain no real values — safe by design.
+!.env.example
+!.env.production.example
 
 # vercel
 .vercel

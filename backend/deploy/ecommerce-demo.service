@@ -1,0 +1,53 @@
+# ecommerce-demo.service — systemd unit for the AI E-Commerce Automation
+# public-demo backend (FastAPI + uvicorn).
+#
+# INSTALL (on the Hetzner server, as root or with sudo):
+#   1. Adjust the paths below to your checkout location and user.
+#   2. sudo cp ecommerce-demo.service /etc/systemd/system/
+#   3. sudo systemctl daemon-reload
+#   4. sudo systemctl enable --now ecommerce-demo.service
+#   5. sudo systemctl status ecommerce-demo.service
+#   6. curl http://127.0.0.1:8000/health   (or via nginx, see nginx-example.conf)
+#
+# SECURITY NOTES:
+# - The service binds 127.0.0.1 only; public traffic comes through nginx.
+# - --proxy-headers lets uvicorn trust X-Forwarded-For from nginx so the
+#   per-IP rate limiter sees real client IPs. This is safe ONLY because the
+#   app listens on 127.0.0.1 behind a reverse proxy you control.
+# - ADMIN_API_KEY must be set in the env file (0600) — never committed.
+# - --workers 2: the in-memory rate limiter is per-worker, so per-IP limits
+#   are approximately half per worker. Acceptable for the demo; do not scale
+#   workers up without moving the limiter to shared storage.
+
+[Unit]
+Description=AI E-Commerce Automation — public demo backend
+After=network.target
+
+[Service]
+Type=simple
+# --- adjust to your deployment ----------------------------------------
+User=deploy
+Group=deploy
+WorkingDirectory=/srv/ai-ecommerce-automation/backend
+EnvironmentFile=/srv/ai-ecommerce-automation/backend/.env.production
+ExecStart=/srv/ai-ecommerce-automation/backend/.venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --workers 2 \
+    --proxy-headers \
+    --log-level info
+# ----------------------------------------------------------------------
+Restart=on-failure
+RestartSec=5
+# Hardening: no need for elevated privileges or extra FS access.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/srv/ai-ecommerce-automation/backend/data
+# SQLite DB lives under data/; keep it writable by the service user.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ecommerce-demo
+
+[Install]
+WantedBy=multi-user.target

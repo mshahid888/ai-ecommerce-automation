@@ -1,0 +1,21 @@
+# vercel.json — frontend deployment settings for the public demo.
+#
+# Vercel auto-detects Next.js, so this file only pins the obvious commands.
+# The IMPORTANT production setting lives in the Vercel dashboard, not here:
+#
+#   NEXT_PUBLIC_API_URL = https://<your-backend-domain>   (e.g. https://api-demo.example.com)
+#
+# NEXT_PUBLIC_* variables are inlined at BUILD time — set the variable in the
+# Vercel project settings (Production environment) BEFORE deploying, and
+# redeploy (rebuild) whenever it changes.
+#
+# No secrets belong in this file or in frontend code.
+
+{
+  "$schema": "https://openapi.vercel.com/vercel.json",
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "outputDirectory": ".next",
+  "framework": "nextjs"
+}

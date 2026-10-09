@@ -1,17 +1,25 @@
 # GitHub Setup — `ai-ecommerce-automation`
 
-Status (2026-10-09): **repository NOT yet created on GitHub.** Automated creation from
-this VM was attempted and failed with:
+Status (Phase 8, 2026-10-09): **repository NOT yet created on GitHub.**
+Automated creation from this VM was attempted **twice** and failed both times
+with:
 
 ```
 failed to create repository: POST https://api.github.com/user/repos:
 403 Resource not accessible by integration
 ```
 
-Cause: the Muse GitHub App integration on this VM is scoped to selected repositories
-and is not permitted to create new repositories under `mshahid888`. This is an
-account/permission limitation, not a code problem. Nothing was pushed anywhere;
-the local git repository is initialized and ready.
+Attempts: (1) Phase 1, via the Muse GitHub-App `github` CLI; (2) Phase 8,
+re-attempted with the same tool — same 403. `gh` on this VM is not logged in
+(`gh auth login` needs Shahid's interactive sign-in), so there is no
+workaround available here that respects the auth boundaries — deliberately
+not attempted.
+
+Cause: the Muse GitHub App integration on this VM is scoped to selected
+repositories and is not permitted to create new repositories under
+`mshahid888`. This is an account/permission limitation, not a code problem.
+Nothing was pushed anywhere; the local git repository is initialized and
+ready (5 commits through Phase 7; Phase 8 adds the deploy configs as the 6th).
 
 ## What Shahid needs to do (one time, ~3 minutes)
 
