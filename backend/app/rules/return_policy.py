@@ -13,6 +13,20 @@ from datetime import date
 from typing import Any
 
 
+#: English display text for return-reason codes (``defekt``,
+#: ``passt_nicht``, ...). The codes themselves stay as-is — they are
+#: internal identifiers — but only this mapping is ever shown to
+#: customers; raw codes must never reach a customer-facing reply.
+RETURN_REASON_DISPLAY = {
+    "defekt": "defective",
+    "passt_nicht": "doesn't fit",
+    "falsche_ware": "wrong item",
+    "verspaetete_lieferung": "late delivery",
+    "gefaellt_nicht": "not as expected",
+    "sonstiges": "other",
+}
+
+
 def _order_date(order: dict[str, Any]) -> date | None:
     raw = (order or {}).get("created_at") or ""
     try:
@@ -44,7 +58,7 @@ def evaluate_return_eligibility(
             "eligible": None,
             "verdict": "order_missing",
             "details_de": (
-                "Ohne Bestellnummer kann ich die Rückgabefrist nicht prüfen."
+                "I can't check the return window without an order number."
             ),
             "days_since_order": None,
             "window_days": window_days,
@@ -59,8 +73,8 @@ def evaluate_return_eligibility(
             "eligible": True,
             "verdict": "not_shipped",
             "details_de": (
-                "Die Bestellung wurde noch nicht versendet — statt einer "
-                "Retoure ist eine Stornierung möglich."
+                "The order hasn't been shipped yet — cancellation is "
+                "possible instead of a return."
             ),
             "days_since_order": days,
             "window_days": window_days,
@@ -71,8 +85,8 @@ def evaluate_return_eligibility(
             "eligible": False,
             "verdict": "window_expired",
             "details_de": (
-                f"Die {window_days}-tägige Rückgabefrist ist überschritten "
-                f"(Bestellung vor {days} Tagen)."
+                f"The {window_days}-day return window has expired "
+                f"(order placed {days} days ago)."
             ),
             "days_since_order": days,
             "window_days": window_days,
@@ -83,9 +97,9 @@ def evaluate_return_eligibility(
             "eligible": True,
             "verdict": "preliminary_eligible",
             "details_de": (
-                f"Vorläufige Prüfung: Die Bestellung liegt innerhalb der "
-                f"{window_days}-tägigen Rückgabefrist. Die endgültige "
-                f"Prüfung übernimmt ein Mitarbeiter."
+                f"Preliminary check: the order is within the "
+                f"{window_days}-day return window. A team member will do "
+                f"the final review."
             ),
             "days_since_order": days,
             "window_days": window_days,
@@ -95,8 +109,8 @@ def evaluate_return_eligibility(
         "eligible": None,
         "verdict": "unclear",
         "details_de": (
-            "Der Bestellstatus lässt keine automatische Prüfung zu — "
-            "ein Mitarbeiter übernimmt den Fall."
+            "The order status doesn't allow an automatic check — "
+            "a team member will take the case."
         ),
         "days_since_order": days,
         "window_days": window_days,

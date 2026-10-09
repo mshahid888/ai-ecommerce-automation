@@ -99,10 +99,10 @@ class QuotaGuardedProvider(LLMProvider):
 # Event key/label for the honest quota-fallback workflow event.
 EVENT_LLM_QUOTA_FALLBACK = "llm_quota_fallback"
 EVENT_LLM_QUOTA_FALLBACK_LABEL = (
-    "KI-Tageskontingent erreicht — Demo-Regelwerk verwendet"
+    "Daily AI quota reached — demo rule engine used"
 )
 QUOTA_FALLBACK_NOTE_DE = (
-    "Hinweis: Das KI-Tageskontingent dieser Demo ist aufgebraucht. "
-    "Diese Antwort wurde vom Demo-Regelwerk erstellt — es sind keine "
-    "KI-Kosten angefallen."
+    "Note: this demo's daily AI quota has been used up. "
+    "This reply was created by the demo rule engine — no "
+    "AI costs were incurred."
 )

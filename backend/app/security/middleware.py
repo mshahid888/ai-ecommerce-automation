@@ -35,8 +35,7 @@ settings = _app_settings
 _429_BODY = {
     "error": "rate_limit_exceeded",
     "message": (
-        "Zu viele Anfragen. Bitte warten Sie einen Moment und versuchen "
-        "Sie es erneut."
+        "Too many requests. Please wait a moment and try again."
     ),
 }
 

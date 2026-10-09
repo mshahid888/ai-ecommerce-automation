@@ -6,7 +6,7 @@
   401; duplicate webhook id → 200 "duplicate" without double-processing.
 - Real ShopifyAdapter: helpful error when env vars are missing; no real
   network calls in tests (``_http_get_json`` is monkeypatched).
-- Chat pipeline: identical German replies under STORE_BACKEND=demo and
+- Chat pipeline: identical English replies under STORE_BACKEND=demo and
   shopify_simulated.
 
 All tests run against an isolated temp DB (dependency_overrides).
@@ -153,10 +153,10 @@ def test_parity_get_product_aquapure(isolated_conn):
 
 def test_parity_search_products(isolated_conn):
     demo_matches = _demo(isolated_conn).search_products(
-        "Ist die Trinkflasche spülmaschinengeeignet?"
+        "Is the water bottle dishwasher-safe?"
     )
     sim_matches = _simulated(isolated_conn).search_products(
-        "Ist die Trinkflasche spülmaschinengeeignet?"
+        "Is the water bottle dishwasher-safe?"
     )
     assert demo_matches and sim_matches
     assert demo_matches[0]["name"] == "AquaPure 750"
@@ -211,8 +211,8 @@ def test_adapters_are_store_scoped(isolated_conn):
     assert simulated.get_order("10482") is None
     assert demo.list_orders() == []
     assert simulated.list_orders() == []
-    assert demo.search_products("Trinkflasche") == []
-    assert simulated.search_products("Trinkflasche") == []
+    assert demo.search_products("water bottle") == []
+    assert simulated.search_products("water bottle") == []
     assert demo.get_product("MS-AP750") is None
     assert demo.get_fulfillment("10482") is None
 
@@ -479,7 +479,7 @@ def test_real_adapter_product_mapping_no_network(monkeypatch):
                 "product": {
                     "id": 123,
                     "title": "AquaPure 750",
-                    "body_html": "<p>Trinkflasche aus <strong>Edelstahl</strong>.</p>",
+                    "body_html": "<p>Stainless steel <strong>water bottle</strong>.</p>",
                     "variants": [{"sku": "MS-AP750", "price": "19.99"}],
                 }
             }
@@ -490,7 +490,7 @@ def test_real_adapter_product_mapping_no_network(monkeypatch):
     assert product is not None
     assert product["sku"] == "MS-AP750"
     assert product["name"] == "AquaPure 750"
-    assert product["description"] == "Trinkflasche aus Edelstahl."
+    assert product["description"] == "Stainless steel water bottle."
     assert product["shopify_id"] == "gid://shopify/Product/123"
 
 
@@ -506,9 +506,9 @@ def _chat(client, message: str) -> dict:
 def test_chat_identical_under_both_backends(isolated_client):
     client, settings = isolated_client
     messages = [
-        "Hallo, wo bleibt meine Bestellung #10482?",
-        "Ist die Trinkflasche AquaPure 750 spülmaschinengeeignet?",
-        "Ich möchte meine Bestellung #10471 zurücksenden.",
+        "Hello, where is my order #10482?",
+        "Is the AquaPure 750 water bottle dishwasher-safe?",
+        "I would like to return order #10471.",
     ]
     replies = {}
     for backend in ("demo", "shopify_simulated"):

@@ -11,19 +11,19 @@ import {
 function formatDate(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString("de-DE");
+  return date.toLocaleString("en-GB");
 }
 
 function statusLabel(status: string): string {
-  if (status === "open") return "Offen";
-  if (status === "closed") return "Geschlossen";
+  if (status === "open") return "Open";
+  if (status === "closed") return "Closed";
   return status;
 }
 
 function priorityLabel(priority: string | null): string {
-  if (priority === "high") return "Hoch";
+  if (priority === "high") return "High";
   if (priority === "normal") return "Normal";
-  if (priority === "low") return "Niedrig";
+  if (priority === "low") return "Low";
   return priority ?? "–";
 }
 
@@ -82,20 +82,20 @@ export default function TicketDetailView({ id }: { id: string }) {
           href="/tickets"
           className="text-sm font-medium text-slate-600 underline underline-offset-2"
         >
-          ← Zurück zu den Tickets
+          ← Back to tickets
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
           Ticket #{id}
         </h1>
         <p className="mt-1 text-sm text-slate-600">
-          Supportvorgang mit verknüpfter Unterhaltung und Verlauf –{" "}
-          <span className="font-medium">Demo-Daten</span>.
+          Support case with linked conversation and history –{" "}
+          <span className="font-medium">Demo data</span>.
         </p>
       </div>
 
       {loading && (
         <p role="status" className="text-sm text-slate-600">
-          Ticket wird geladen …
+          Loading ticket …
         </p>
       )}
 
@@ -105,7 +105,7 @@ export default function TicketDetailView({ id }: { id: string }) {
           className="rounded-xl border border-slate-200 bg-white px-4 py-8 text-center shadow-sm"
         >
           <p className="text-sm text-slate-600">
-            Das Ticket #{id} wurde nicht gefunden.
+            Ticket #{id} was not found.
           </p>
         </div>
       )}
@@ -115,19 +115,19 @@ export default function TicketDetailView({ id }: { id: string }) {
           role="alert"
           className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm"
         >
-          Das Backend ist nicht erreichbar – das Ticket kann derzeit nicht
-          angezeigt werden.
+          The backend is not reachable – the ticket cannot be displayed right
+          now.
         </div>
       )}
 
       {!loading && !notFound && !backendDown && ticket && (
         <>
           <section
-            aria-label="Ticket-Zusammenfassung"
+            aria-label="Ticket summary"
             className="rounded-xl border border-slate-200 bg-white shadow-sm"
           >
             <div className="divide-y divide-slate-200 px-5">
-              <InfoRow label="Anliegen">
+              <InfoRow label="Issue">
                 {ticket.intent_label_de}
                 {ticket.intent && (
                   <span className="ml-2 font-mono text-xs text-slate-500">
@@ -135,7 +135,7 @@ export default function TicketDetailView({ id }: { id: string }) {
                   </span>
                 )}
               </InfoRow>
-              <InfoRow label="Zusammenfassung">
+              <InfoRow label="Summary">
                 {ticket.summary ?? "–"}
               </InfoRow>
               <InfoRow label="Status">
@@ -149,21 +149,21 @@ export default function TicketDetailView({ id }: { id: string }) {
                   {statusLabel(ticket.status)}
                 </span>
               </InfoRow>
-              <InfoRow label="Priorität">
+              <InfoRow label="Priority">
                 {priorityLabel(ticket.priority)}
               </InfoRow>
-              <InfoRow label="Bestellung">
+              <InfoRow label="Order">
                 <span className="font-mono">
                   {ticket.order_ref ? `#${ticket.order_ref}` : "–"}
                 </span>
               </InfoRow>
-              <InfoRow label="Eskalationsgrund">
+              <InfoRow label="Escalation reason">
                 {ticket.escalation_reason ?? "–"}
               </InfoRow>
-              <InfoRow label="Empfohlene nächste Aktion">
+              <InfoRow label="Recommended next action">
                 {ticket.recommended_action ?? "–"}
               </InfoRow>
-              <InfoRow label="Erstellt">
+              <InfoRow label="Created">
                 <span className="tabular-nums">
                   {formatDate(ticket.created_at)}
                 </span>
@@ -171,13 +171,13 @@ export default function TicketDetailView({ id }: { id: string }) {
             </div>
           </section>
 
-          <section aria-label="Verknüpfte Unterhaltung">
+          <section aria-label="Linked conversation">
             <h2 className="text-lg font-semibold text-slate-900">
-              Verknüpfte Unterhaltung
+              Linked conversation
             </h2>
             {ticket.messages.length === 0 ? (
               <p className="mt-2 text-sm text-slate-600">
-                Keine Nachrichten vorhanden.
+                No messages yet.
               </p>
             ) : (
               <ol className="mt-3 space-y-3">
@@ -191,7 +191,7 @@ export default function TicketDetailView({ id }: { id: string }) {
                     }`}
                   >
                     <p className="text-xs font-semibold text-slate-500">
-                      {message.role === "user" ? "Kunde" : "Assistent"}
+                      {message.role === "user" ? "Customer" : "Assistant"}
                     </p>
                     <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">
                       {message.content}
@@ -202,17 +202,16 @@ export default function TicketDetailView({ id }: { id: string }) {
             )}
           </section>
 
-          <section aria-label="Verlauf">
+          <section aria-label="History">
             <h2 className="text-lg font-semibold text-slate-900">
-              Ereignisverlauf
+              Event history
             </h2>
             <p className="mt-1 text-sm text-slate-600">
-              Alle tatsächlich ausgeführten Workflow-Schritte dieser
-              Unterhaltung.
+              All workflow steps actually executed in this conversation.
             </p>
             {ticket.events.length === 0 ? (
               <p className="mt-2 text-sm text-slate-600">
-                Keine Ereignisse vorhanden.
+                No events yet.
               </p>
             ) : (
               <ol className="mt-3 space-y-0">
@@ -239,7 +238,7 @@ export default function TicketDetailView({ id }: { id: string }) {
                         {event.label_de}
                         {event.status === "failed" && (
                           <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">
-                            Fehlgeschlagen
+                            Failed
                           </span>
                         )}
                       </p>

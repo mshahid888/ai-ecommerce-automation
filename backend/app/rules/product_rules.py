@@ -19,19 +19,19 @@ _TOKEN_RE = re.compile(r"[a-zäöüß0-9]+", re.IGNORECASE)
 # Message keywords → attribute key in ``attributes_json``. Order matters:
 # longer, more specific keywords are listed before their prefixes.
 _ATTRIBUTE_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("spuelmaschinengeeignet", ("spülmaschinengeeignet", "spülmaschine")),
-    ("volumen_ml", ("volumen", "fassungsvermögen")),
-    ("kapazitaet_mah", ("kapazität", "mah")),
-    ("isolierung", ("isoliert", "isolierung")),
+    ("spuelmaschinengeeignet", ("spülmaschinengeeignet", "spülmaschine", "dishwasher-safe", "dishwasher")),
+    ("volumen_ml", ("volumen", "fassungsvermögen", "volume", "capacity")),
+    ("kapazitaet_mah", ("kapazität", "mah", "capacity")),
+    ("isolierung", ("isoliert", "isolierung", "insulated", "insulation")),
     ("material", ("material",)),
-    ("farbtemperaturen", ("farbtemperatur",)),
-    ("dimmbar", ("dimmbar",)),
-    ("leistung_w", ("leistung", "watt")),
-    ("anschluss", ("anschluss",)),
-    ("solarpanel", ("solarpanel", "solar")),
-    ("mahlwerk", ("mahlwerk",)),
-    ("einstellung", ("einstellung", "einstellbar")),
-    ("farbe", ("farbe", "farb")),
+    ("farbtemperaturen", ("farbtemperatur", "color temperature", "colour temperature")),
+    ("dimmbar", ("dimmbar", "dimmable")),
+    ("leistung_w", ("leistung", "watt", "power")),
+    ("anschluss", ("anschluss", "connector", "port")),
+    ("solarpanel", ("solarpanel", "solar", "solar panel")),
+    ("mahlwerk", ("mahlwerk", "burr", "grinder")),
+    ("einstellung", ("einstellung", "einstellbar", "adjustment", "adjustable")),
+    ("farbe", ("farbe", "farb", "color", "colour", "colors", "colours")),
 )
 
 _UNIT_SUFFIXES = {
@@ -45,20 +45,20 @@ _STOCK_KEY = "bestand_stueck"
 
 # German display labels for known attribute keys.
 _ATTRIBUTE_LABELS = {
-    "spuelmaschinengeeignet": "spülmaschinengeeignet",
+    "spuelmaschinengeeignet": "Dishwasher-safe",
     "material": "Material",
-    "volumen_ml": "Volumen",
-    "kapazitaet_mah": "Kapazität",
-    "isolierung": "Isolierung",
-    "anschluss": "Anschluss",
-    "solarpanel": "Solarpanel",
-    "mahlwerk": "Mahlwerk",
-    "einstellung": "Einstellung",
-    "dimmbar": "dimmbar",
-    "farbtemperaturen": "Farbtemperaturen",
-    "leistung_w": "Leistung",
-    "farbe": "Farbe",
-    "bestand_stueck": "Verfügbarkeit",
+    "volumen_ml": "Volume",
+    "kapazitaet_mah": "Capacity",
+    "isolierung": "Insulation",
+    "anschluss": "Connector",
+    "solarpanel": "Solar panel",
+    "mahlwerk": "Burr",
+    "einstellung": "Adjustment",
+    "dimmbar": "Dimmable",
+    "farbtemperaturen": "Color temperatures",
+    "leistung_w": "Power",
+    "farbe": "Color",
+    "bestand_stueck": "Availability",
 }
 
 
@@ -131,9 +131,9 @@ def format_attribute_value(key: str, value: Any) -> str:
             units = int(value)
         except (TypeError, ValueError):
             return str(value)
-        return f"{units} Stück auf Lager" if units > 0 else "derzeit nicht auf Lager"
+        return f"{units} units in stock" if units > 0 else "currently out of stock"
     if isinstance(value, bool):
-        return "ja" if value else "nein"
+        return "yes" if value else "no"
     unit = _UNIT_SUFFIXES.get(key)
     return f"{value} {unit}" if unit else str(value)
 

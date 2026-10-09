@@ -21,24 +21,24 @@ _PRODUCTS = [
         "sku": "MS-AP750",
         "name": "AquaPure 750",
         "description": (
-            "Trinkflasche aus Edelstahl, 750 ml, doppelwandig isoliert — "
-            "hält Getränke 24 Stunden kalt und 12 Stunden warm."
+            "Stainless steel water bottle, 750 mL, double-walled insulated — "
+            "keeps drinks cold for 24 hours and warm for 12 hours."
         ),
         "attributes_json": json.dumps(
             {
                 "spuelmaschinengeeignet": True,
-                "material": "Edelstahl",
+                "material": "stainless steel",
                 "volumen_ml": 750,
-                "isolierung": "doppelwandig",
+                "isolierung": "double-walled",
                 "bestand_stueck": 42,
             }
         ),
     },
     {
         "sku": "MS-SB30",
-        "name": "Solarbank 30000mAh",
+        "name": "SolarBank 30000mAh",
         "description": (
-            "Powerbank mit Solarpanel, 30000 mAh Kapazität, USB-C Schnellladung."
+            "Power bank with solar panel, 30000 mAh capacity, USB-C fast charging."
         ),
         "attributes_json": json.dumps(
             {
@@ -51,24 +51,24 @@ _PRODUCTS = [
     },
     {
         "sku": "MS-KM100",
-        "name": "Kaffeemühle manuell",
+        "name": "Manual Coffee Grinder",
         "description": (
-            "Manuelle Kaffeemühle mit Keramikmahlwerk, stufenlos einstellbar."
+            "Manual coffee grinder with ceramic burr, stepless adjustment."
         ),
         "attributes_json": json.dumps(
             {
-                "mahlwerk": "Keramik",
-                "einstellung": "stufenlos",
-                "material": "Edelstahl/Holz",
+                "mahlwerk": "Ceramic",
+                "einstellung": "stepless",
+                "material": "stainless steel/wood",
                 "bestand_stueck": 0,
             }
         ),
     },
     {
         "sku": "MS-LD200",
-        "name": "LED-Schreibtischlampe",
+        "name": "LED Desk Lamp",
         "description": (
-            "Dimmbare LED-Schreibtischlampe mit 3 Farbtemperaturen."
+            "Dimmable LED desk lamp with 3 color temperatures."
         ),
         "attributes_json": json.dumps(
             {
@@ -82,8 +82,8 @@ _PRODUCTS = [
 ]
 
 _CUSTOMERS = [
-    {"name": "Max Mustermann", "email": "max.mustermann@example.de"},
-    {"name": "Erika Musterfrau", "email": "erika.musterfrau@example.de"},
+    {"name": "John Doe", "email": "john.doe@example.com"},
+    {"name": "Jane Doe", "email": "jane.doe@example.com"},
 ]
 
 # Fictional orders for the four demo scenarios. created_at is explicit so
@@ -91,7 +91,7 @@ _CUSTOMERS = [
 _ORDERS = [
     {
         "order_ref": "10482",
-        "customer": "Max Mustermann",
+        "customer": "John Doe",
         "status": "shipped",
         "carrier": "DHL",
         "tracking_ref": "DEMO-TRK-10482",
@@ -102,7 +102,7 @@ _ORDERS = [
     },
     {
         "order_ref": "10483",
-        "customer": "Erika Musterfrau",
+        "customer": "Jane Doe",
         "status": "processing",
         "carrier": None,
         "tracking_ref": None,
@@ -113,7 +113,7 @@ _ORDERS = [
     },
     {
         "order_ref": "10471",
-        "customer": "Max Mustermann",
+        "customer": "John Doe",
         "status": "delivered",
         "carrier": "DHL",
         "tracking_ref": "DEMO-TRK-10471",
@@ -124,7 +124,7 @@ _ORDERS = [
     },
     {
         "order_ref": "10479",
-        "customer": "Erika Musterfrau",
+        "customer": "Jane Doe",
         "status": "delayed",
         "carrier": "DHL",
         "tracking_ref": "DEMO-TRK-10479",
@@ -142,18 +142,18 @@ _POLICIES = {
         "rueckgabefrist_tage": 30,
         "widerrufsfrist_tage": 14,
         "bedingungen": [
-            "Ware unbenutzt und in Originalverpackung",
-            "Bestellnummer angeben",
+            "Item unused and in original packaging",
+            "Provide your order number",
         ],
         "ausnahmen": [
-            "versiegelte Hygieneartikel nach Öffnung",
+            "sealed hygiene items after opening",
         ],
         "ruecksendeadresse": (
-            "Muster-Shop GmbH, Retouren, Musterstraße 1, 37073 Göttingen"
+            "Demo Shop GmbH, Returns, Sample Street 1, 37073 Göttingen"
         ),
         "hinweis": (
-            "Dies ist eine Demo-Richtlinie. Im Demo-Modus werden keine "
-            "echten Retouren autorisiert und keine Rückerstattungen ausgeführt."
+            "This is a demo policy. In demo mode, no real returns are "
+            "authorized and no refunds are issued."
         ),
         "status": "active",
     },
@@ -163,22 +163,21 @@ _POLICIES = {
         "lieferzeit_werktage": "2-4",
         "versandpartner": ["DHL", "Hermes"],
         "tracking_hinweis": (
-            "Demo-Umgebung: Sendungsnummern sind fiktiv, "
-            "keine Live-Sendungsverfolgung."
+            "Demo environment: tracking numbers are fictional; "
+            "no live tracking available."
         ),
         "status": "active",
     },
     "payments": {
         "zahlungsarten": [
             "PayPal",
-            "Kreditkarte (Visa/Mastercard)",
-            "Kauf auf Rechnung",
-            "Vorkasse per Überweisung",
+            "Credit card (Visa/Mastercard)",
+            "Purchase on account",
+            "Prepayment by bank transfer",
         ],
         "hinweis": (
-            "Zahlungsabwicklung erfolgt über den Zahlungsanbieter des "
-            "Shops; im Demo-Modus werden keine echten Zahlungen "
-            "ausgeführt."
+            "Payment processing is handled by the shop's payment provider; "
+            "no real payments are processed in demo mode."
         ),
         "status": "active",
     },
@@ -211,7 +210,7 @@ def create_demo_store(conn: sqlite3.Connection) -> str:
     _wipe_demo_rows(conn)
     conn.execute(
         "INSERT INTO stores (id, name, slug, is_demo) VALUES (?, ?, ?, 1)",
-        (DEMO_STORE_ID, "Muster-Shop GmbH", "demo-muster-shop"),
+        (DEMO_STORE_ID, "Demo Shop GmbH", "demo-muster-shop"),
     )
 
     customer_ids: dict[str, int] = {}

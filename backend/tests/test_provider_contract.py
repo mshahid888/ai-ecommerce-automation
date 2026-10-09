@@ -25,7 +25,7 @@ def test_mock_classify_returns_valid_json_contract():
     provider = MockLLMProvider()
     for message in [
         "Where is my order #10482?",
-        "Ist die AquaFlasche spülmaschinengeeignet?",
+        "Is the water bottle dishwasher-safe?",
         "I want a refund, this is terrible",
         "I need to talk to a human",
         "asdkfj qwer zzz",
@@ -39,7 +39,7 @@ def test_mock_classify_returns_valid_json_contract():
 
 
 def test_mock_classify_extracts_order_ref():
-    parsed = json.loads(MockLLMProvider().classify("Wo ist meine Bestellung #10482?"))
+    parsed = json.loads(MockLLMProvider().classify("Where is my order #10482?"))
     assert parsed["order_ref"] == "10482"
     assert parsed["intent"] == "order_status"
 

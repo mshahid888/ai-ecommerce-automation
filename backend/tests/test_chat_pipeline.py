@@ -76,7 +76,7 @@ def _count(conn: sqlite3.Connection, table: str, where: str = "") -> int:
 
 def test_order_status_happy_path(isolated_client):
     client, _ = isolated_client
-    body = _chat(client, "Hallo, wo bleibt meine Bestellung #10482?")
+    body = _chat(client, "Hello, where is my order #10482?")
 
     assert body["intent"] == "order_status"
     assert body["order_ref"] == "10482"
@@ -86,9 +86,11 @@ def test_order_status_happy_path(isolated_client):
     # Answer is grounded in verified demo data — nothing invented.
     answer = body["answer"]
     assert "10482" in answer
-    assert "versendet" in answer
+    assert "shipped" in answer
+    assert "has been shipped via DHL" in answer
     assert "DHL" in answer
     assert "DEMO-TRK-10482" in answer
+    assert "simulated reference" in answer
     assert "Demo" in answer
 
     order = body["order"]
@@ -115,18 +117,18 @@ def test_order_status_bare_order_ref(isolated_client):
     body = _chat(client, "#10479")
     assert body["intent"] == "order_status"
     assert body["order"]["status"] == "delayed"
-    assert "verzögert" in body["answer"]
+    assert "delayed" in body["answer"]
 
 
 def test_unknown_order_asks_for_clarification(isolated_client):
     client, _ = isolated_client
-    body = _chat(client, "Wo bleibt meine Bestellung #99999?")
+    body = _chat(client, "Where is my order #99999?")
 
     assert body["intent"] == "order_status"
     assert body["order"] is None
     answer = body["answer"]
-    assert "nicht gefunden" in answer
-    assert "Mitarbeiter" in answer  # human support offered, not invented data
+    assert "not found" in answer
+    assert "team member" in answer  # human support offered, not invented data
 
     # The lookup really ran (found nothing); no rules were applied to data.
     keys = _event_keys(body)
@@ -146,14 +148,14 @@ def test_unknown_order_asks_for_clarification(isolated_client):
 def test_product_question_answered_from_catalog(isolated_client):
     client, _ = isolated_client
     body = _chat(
-        client, "Ist diese Trinkflasche spülmaschinengeeignet?"
+        client, "Is this water bottle dishwasher-safe?"
     )
 
     assert body["intent"] == "product_question"
     assert body["ticket_id"] is None
     answer = body["answer"]
-    assert "spülmaschinengeeignet" in answer
-    assert "Ja" in answer
+    assert "Dishwasher-safe" in answer
+    assert "Yes" in answer
     assert "AquaPure 750" in answer
     assert _event_keys(body) == [
         "message_received",
@@ -166,23 +168,23 @@ def test_product_question_answered_from_catalog(isolated_client):
 
 def test_product_question_missing_attribute_is_honest(isolated_client):
     client, _ = isolated_client
-    body = _chat(client, "In welchen Farben gibt es die Trinkflasche?")
+    body = _chat(client, "In which colors does the water bottle come?")
 
     assert body["intent"] == "product_question"
     answer = body["answer"]
     # Honest "not available" — never invents a color.
-    assert "keine Informationen" in answer
-    assert "Farbe" in answer
+    assert "any information" in answer
+    assert "Color" in answer
     # Escalation is offered where appropriate.
-    assert "Mitarbeiter" in answer
+    assert "team member" in answer
 
 
 def test_product_question_unknown_product_asks_which(isolated_client):
     client, _ = isolated_client
-    body = _chat(client, "Ist der Staubsauger leise?")
+    body = _chat(client, "Is the vacuum cleaner quiet?")
 
     assert body["intent"] == "product_question"
-    assert "welchem Produkt" in body["answer"]
+    assert "Which product" in body["answer"]
 
 
 # --- Scenario C: return request --------------------------------------------
@@ -190,11 +192,11 @@ def test_product_question_unknown_product_asks_which(isolated_client):
 
 def test_return_request_without_order_ref_asks_for_it(isolated_client):
     client, db_path = isolated_client
-    body = _chat(client, "Ich möchte meine Bestellung zurücksenden.")
+    body = _chat(client, "I would like to return my order.")
 
     assert body["intent"] == "return_request"
     assert body["ticket_id"] is None
-    assert "Bestellnummer" in body["answer"]
+    assert "order number" in body["answer"]
 
     conn = connect(db_path)
     try:
@@ -206,7 +208,7 @@ def test_return_request_without_order_ref_asks_for_it(isolated_client):
 
 def test_return_request_creates_ticket(isolated_client):
     client, db_path = isolated_client
-    body = _chat(client, "Ich möchte die Bestellung #10482 zurücksenden.")
+    body = _chat(client, "I would like to return order #10482.")
 
     assert body["intent"] == "return_request"
     assert body["ticket_id"] is not None
@@ -214,8 +216,8 @@ def test_return_request_creates_ticket(isolated_client):
     answer = body["answer"]
     # Demo labeling: no real return authorized, no refund executed.
     assert "Demo" in answer
-    assert "keine echte Retoure" in answer
-    assert "keine Rückerstattung" in answer
+    assert "no real return" in answer
+    assert "no refund" in answer
     assert "30" in answer  # return window from the policy row
 
     conn = connect(db_path)
@@ -232,6 +234,9 @@ def test_return_request_creates_ticket(isolated_client):
         assert ticket["intent"] == "return_request"
         assert ticket["order_ref"] == "10482"
         assert ticket["status"] == "open"
+        # Staff-facing ticket text is English, never raw German or codes.
+        assert "Return request for order #10482" in ticket["summary"]
+        assert "defekt" not in ticket["summary"]
     finally:
         conn.close()
 
@@ -276,12 +281,14 @@ def test_return_policy_engine_unit():
 
 def test_human_support_creates_escalation_ticket(isolated_client):
     client, db_path = isolated_client
-    body = _chat(client, "Ich möchte mit einem Mitarbeiter sprechen.")
+    body = _chat(client, "I want to speak to a human.")
 
     assert body["intent"] == "human_support"
     assert body["escalated"] is True
     assert body["ticket_id"] is not None
     assert f"Ticket #{body['ticket_id']}" in body["answer"]
+    # The escalation reply is English, never raw German.
+    assert "team member" in body["answer"]
 
     conn = connect(db_path)
     try:
@@ -308,7 +315,7 @@ def test_complaint_escalates_with_high_priority(isolated_client):
     assert body["escalated"] is True
     assert body["ticket_id"] is not None
     # No unsupported promises in the reply — staff review is promised instead.
-    assert "Mitarbeiter" in body["answer"]
+    assert "team member" in body["answer"]
 
     conn = connect(db_path)
     try:

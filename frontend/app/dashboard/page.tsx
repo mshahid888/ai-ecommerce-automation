@@ -10,29 +10,29 @@ import {
 function formatDate(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString("de-DE");
+  return date.toLocaleString("en-GB");
 }
 
 const CARD_DEFS = [
   {
     key: "conversations_count" as const,
-    label: "Unterhaltungen",
-    description: "Chat-Unterhaltungen in der Demo-Datenbank",
+    label: "Conversations",
+    description: "Chat conversations in the demo database",
   },
   {
     key: "messages_count" as const,
-    label: "Nachrichten",
-    description: "Kunden- und Assistentennachrichten",
+    label: "Messages",
+    description: "Customer and assistant messages",
   },
   {
     key: "tickets_open" as const,
-    label: "Offene Tickets",
-    description: "Supportfälle mit Mitarbeiterbedarf",
+    label: "Open tickets",
+    description: "Support cases requiring an agent",
   },
   {
     key: "escalations_count" as const,
-    label: "Eskalationen",
-    description: "Explizite Übergaben an Mitarbeiter",
+    label: "Escalations",
+    description: "Explicit handoffs to agents",
   },
 ] as const;
 
@@ -70,15 +70,15 @@ export default function DashboardPage() {
           Dashboard
         </h1>
         <p className="mt-1 text-sm text-slate-600">
-          Betriebsübersicht für den Demo-Shop – alle Zahlen stammen aus der
-          Datenbank und sind als{" "}
-          <span className="font-medium">Demo-Daten</span> gekennzeichnet.
+          Operational overview for the demo shop – all figures come from the
+          database and are marked as{" "}
+          <span className="font-medium">Demo data</span>.
         </p>
       </div>
 
       {loading && (
         <p role="status" className="text-sm text-slate-600">
-          Dashboard wird geladen …
+          Loading dashboard…
         </p>
       )}
 
@@ -87,14 +87,14 @@ export default function DashboardPage() {
           role="alert"
           className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm"
         >
-          Das Backend ist nicht erreichbar – Kennzahlen können derzeit nicht
-          angezeigt werden.
+          The backend is unavailable – metrics cannot be displayed right
+          now.
         </div>
       )}
 
       {!loading && !backendDown && summary && (
         <>
-          <section aria-label="Kennzahlen">
+          <section aria-label="Metrics">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {CARD_DEFS.map((card) => (
                 <div
@@ -108,7 +108,7 @@ export default function DashboardPage() {
                     {summary[card.key]}
                   </p>
                   <span className="mt-3 inline-block rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
-                    Demo-Daten
+                    Demo data
                   </span>
                   <p className="mt-2 text-xs text-slate-500">
                     {card.description}
@@ -117,38 +117,37 @@ export default function DashboardPage() {
               ))}
             </div>
             <p className="mt-3 text-xs text-slate-500">
-              Tickets gesamt:{" "}
+              Total tickets:{" "}
               <span className="font-medium tabular-nums text-slate-700">
                 {summary.tickets_total}
               </span>{" "}
-              (Demo-Daten) ·{" "}
+              (demo data) ·{" "}
               <Link
                 href="/tickets"
                 className="font-medium text-slate-700 underline underline-offset-2"
               >
-                Alle Tickets ansehen
+                View all tickets
               </Link>
             </p>
           </section>
 
-          <section aria-label="Anliegen-Verteilung">
+          <section aria-label="Intent distribution">
             <h2 className="text-lg font-semibold text-slate-900">
-              Anliegen-Verteilung
+              Intent distribution
             </h2>
             <p className="mt-1 text-sm text-slate-600">
-              Erkannte Absichten aus echten Chat-Unterhaltungen.{" "}
-              <span className="font-medium">Demo-Daten</span> – keine
-              Geschäftsauswertung.
+              Detected intents from real chat conversations.{" "}
+              <span className="font-medium">Demo data</span> – not a business
+              evaluation.
             </p>
             {summary.intents_breakdown.length === 0 ? (
               <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-8 text-center shadow-sm">
                 <p className="text-sm text-slate-600">
-                  Noch keine Unterhaltungen vorhanden. Starten Sie eine
-                  Unterhaltung auf der{" "}
+                  No conversations yet. Start a conversation on the{" "}
                   <Link href="/" className="font-medium underline">
-                    Chat-Seite
+                    chat page
                   </Link>
-                  , um die Verteilung zu sehen.
+                  , to see the distribution.
                 </p>
               </div>
             ) : (
@@ -190,18 +189,18 @@ export default function DashboardPage() {
             )}
           </section>
 
-          <section aria-label="Letzte Aktivitäten">
+          <section aria-label="Recent activity">
             <h2 className="text-lg font-semibold text-slate-900">
-              Letzte Aktivitäten
+              Recent activity
             </h2>
             <p className="mt-1 text-sm text-slate-600">
-              Tatsächlich ausgeführte Workflow-Schritte – jeder Eintrag
-              entspricht einer Operation im Backend.
+              Workflow steps actually executed – each entry corresponds to an
+              operation in the backend.
             </p>
             {summary.recent_events.length === 0 ? (
               <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-8 text-center shadow-sm">
                 <p className="text-sm text-slate-600">
-                  Noch keine Aktivitäten protokolliert.
+                  No activity logged yet.
                 </p>
               </div>
             ) : (
@@ -215,7 +214,7 @@ export default function DashboardPage() {
                       {event.label_de}
                       {event.status === "failed" && (
                         <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">
-                          Fehlgeschlagen
+                          Failed
                         </span>
                       )}
                     </span>
@@ -227,42 +226,40 @@ export default function DashboardPage() {
               </ol>
             )}
           </section>
-          <section aria-label="Sicherheit und Datenschutz (Demo)">
+          <section aria-label="Security and privacy (demo)">
             <h2 className="text-lg font-semibold text-slate-900">
-              Sicherheit &amp; Datenschutz (Demo)
+              Security &amp; privacy (Demo)
             </h2>
             <div className="mt-3 rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-700 shadow-sm">
               <ul className="list-disc space-y-2 pl-5">
                 <li>
-                  <span className="font-medium">Simulierte Daten:</span>{" "}
-                  Alle Bestellungen, Produkte und Kunden in dieser Demo sind
-                  frei erfunden. Es werden keine echten Bestellungen
-                  verarbeitet und keine echten Retouren oder
-                  Rückerstattungen ausgeführt.
+                  <span className="font-medium">Simulated data:</span>{" "}
+                  All orders, products, and customers in this demo are
+                  fictional. No real orders are processed, and no real
+                  returns or refunds are executed.
                 </li>
                 <li>
-                  <span className="font-medium">Keine echten Zahlungen:</span>{" "}
-                  Die Demo fragt keine Zahlungsdaten ab und speichert keine
-                  personenbezogenen Daten echter Kunden.
+                  <span className="font-medium">No real payments:</span>{" "}
+                  The demo does not request payment data and does not store
+                  personal data of real customers.
                 </li>
                 <li>
-                  <span className="font-medium">Nutzungsbegrenzung:</span>{" "}
-                  Anfragen sind pro Besucher begrenzt (Chat, Leserequests und
-                  Demo-Zurücksetzung). Bei Überschreitung antwortet das
-                  Backend mit HTTP&nbsp;429 und einer Wartezeit.
+                  <span className="font-medium">Usage limits:</span>{" "}
+                  Requests are limited per visitor (chat, read requests, and
+                  demo reset). If the limit is exceeded, the backend responds
+                  with HTTP&nbsp;429 and a wait time.
                 </li>
                 <li>
-                  <span className="font-medium">KI-Kontingent:</span> Die
-                  Anzahl echter KI-Anfragen pro Tag ist gedeckelt. Ist das
-                  Kontingent aufgebraucht, antwortet das Demo-Regelwerk —
-                  das wird in der Unterhaltung ehrlich gekennzeichnet.
+                  <span className="font-medium">AI quota:</span> The number
+                  of real AI requests per day is capped. When the quota is
+                  exhausted, the demo rule engine answers — this is clearly
+                  marked in the conversation.
                 </li>
                 <li>
-                  <span className="font-medium">Admin-Schutz:</span> Das
-                  Zurücksetzen der Demo erfordert einen serverseitigen
-                  Admin-Schlüssel. Sicherheitsrelevante Ereignisse
-                  (z.&nbsp;B. fehlgeschlagene Admin-Versuche) werden in einem
-                  unveränderlichen Audit-Protokoll festgehalten.
+                  <span className="font-medium">Admin protection:</span>{" "}
+                  Resetting the demo requires a server-side admin key.
+                  Security-relevant events (e.g. failed admin attempts) are
+                  recorded in an immutable audit log.
                 </li>
               </ul>
             </div>

@@ -110,9 +110,8 @@ async def chat(
             content={
                 "error": "ai_provider_unavailable",
                 "reply_de": (
-                    "Der KI-Dienst ist derzeit nicht erreichbar. "
-                    "Bitte versuche es später erneut oder wende dich "
-                    "an unser Team."
+                    "The AI service is currently unavailable. "
+                    "Please try again later or contact our team."
                 ),
             },
         )
@@ -146,14 +145,14 @@ async def chat(
             store_id,
             conversation_id,
             EVENT_MESSAGE_RECEIVED,
-            "Nachricht empfangen",
+            "Message received",
             {"length": len(message)},
         )
         EventRepository(db).log_event(
             store_id,
             conversation_id,
             EVENT_INTENT_CLASSIFIED,
-            "Absichtserkennung fehlgeschlagen",
+            "Intent classification failed",
             {},
             status="failed",
         )
@@ -163,9 +162,8 @@ async def chat(
             content={
                 "error": "ai_provider_unavailable",
                 "reply_de": (
-                    "Der KI-Dienst ist derzeit nicht erreichbar. "
-                    "Bitte versuche es später erneut oder wende dich "
-                    "an unser Team."
+                    "The AI service is currently unavailable. "
+                    "Please try again later or contact our team."
                 ),
             },
         )

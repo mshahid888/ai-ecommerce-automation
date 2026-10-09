@@ -44,17 +44,17 @@ VALID_INTENTS = {i.value for i in Intent}
 #: Deterministic lookup table — no LLM involved, so labels can never be
 #: invented or mistranslated by a model.
 INTENT_LABELS_DE = {
-    Intent.ORDER_STATUS.value: "Bestellstatus",
-    Intent.PRODUCT_QUESTION.value: "Produktfrage",
-    Intent.RETURN_REQUEST.value: "Retourenanfrage",
-    Intent.COMPLAINT.value: "Beschwerde",
-    Intent.HUMAN_SUPPORT.value: "Mitarbeiterwunsch",
-    Intent.UNKNOWN.value: "Unbekannt",
-    Intent.SHIPPING_INFO.value: "Versandinfo",
-    Intent.PAYMENT_QUESTION.value: "Zahlungsfrage",
-    Intent.PRODUCT_AVAILABILITY.value: "Verfügbarkeit",
-    Intent.ORDER_CANCEL.value: "Stornierung",
-    Intent.GREETING.value: "Begrüßung",
+    Intent.ORDER_STATUS.value: "Order status",
+    Intent.PRODUCT_QUESTION.value: "Product question",
+    Intent.RETURN_REQUEST.value: "Return request",
+    Intent.COMPLAINT.value: "Complaint",
+    Intent.HUMAN_SUPPORT.value: "Human support request",
+    Intent.UNKNOWN.value: "Unknown",
+    Intent.SHIPPING_INFO.value: "Shipping info",
+    Intent.PAYMENT_QUESTION.value: "Payment question",
+    Intent.PRODUCT_AVAILABILITY.value: "Availability",
+    Intent.ORDER_CANCEL.value: "Order cancellation",
+    Intent.GREETING.value: "Greeting",
 }
 
 
@@ -64,7 +64,7 @@ def intent_label_de(intent: str | None) -> str:
     decides what to show)."""
     if intent in INTENT_LABELS_DE:
         return INTENT_LABELS_DE[intent]
-    return intent or "Unbekannt"
+    return intent or "Unknown"
 
 
 #: Intents that must ALWAYS go to a human, no matter the confidence.

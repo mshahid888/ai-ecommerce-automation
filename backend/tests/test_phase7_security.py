@@ -156,10 +156,10 @@ def test_quota_guarded_provider_enforces_cap(isolated_db):
     conn = connect(isolated_db)
     stub = CountingStub()
     guarded = QuotaGuardedProvider(stub, conn, "stub", cap=2)
-    guarded.classify("Hallo")
-    guarded.classify("Hallo")
+    guarded.classify("Hello")
+    guarded.classify("Hello")
     with pytest.raises(QuotaExhausted):
-        guarded.classify("Hallo")
+        guarded.classify("Hello")
     assert stub.calls == 2  # the third call never reached the provider
     conn.close()
 
@@ -227,14 +227,14 @@ def test_order_enumeration_yields_no_data(isolated_client):
         order_ref = f"99{i:03d}"  # 99000..99019 — none exist in demo data
         resp = client.post(
             "/api/chat",
-            json={"message": f"Wo bleibt meine Bestellung #{order_ref}?"},
+            json={"message": f"Where is my order #{order_ref}?"},
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
         # Honest clarification, no invented data, nothing to escalate on.
         assert data["order"] is None
         assert data["ticket_id"] is None
-        assert "nicht gefunden" in data["answer"]
+        assert "not found" in data["answer"]
 
     # No row for any probed reference exists or was created.
     conn = connect(db_path)
@@ -262,29 +262,29 @@ def test_rapid_fire_chat_hits_429_then_recovers(isolated_client):
     settings.rl_chat_per_minute = 5
 
     statuses = [
-        client.post("/api/chat", json={"message": "Hallo"}).status_code
+        client.post("/api/chat", json={"message": "Hello"}).status_code
         for _ in range(8)
     ]
     assert 429 in statuses
     assert statuses.count(200) == 5
 
-    rejected = client.post("/api/chat", json={"message": "Hallo"})
+    rejected = client.post("/api/chat", json={"message": "Hello"})
     assert rejected.status_code == 429
     assert int(rejected.headers["Retry-After"]) >= 1
-    assert "Zu viele Anfragen" in rejected.json()["message"]
+    assert "Too many requests" in rejected.json()["message"]
 
     # A legitimate request works again once the window is cleared.
     limiter.reset()
-    ok = client.post("/api/chat", json={"message": "Hallo"})
+    ok = client.post("/api/chat", json={"message": "Hello"})
     assert ok.status_code == 200
-    assert "willkommen" in ok.json()["answer"].lower()
+    assert "welcome" in ok.json()["answer"].lower()
 
 
 def test_per_ip_daily_chat_cap(isolated_client):
     client, db_path, settings = isolated_client
     settings.rl_chat_per_day = 3
     codes = [
-        client.post("/api/chat", json={"message": "Hallo"}).status_code
+        client.post("/api/chat", json={"message": "Hello"}).status_code
         for _ in range(4)
     ]
     assert codes == [200, 200, 200, 429]
@@ -305,15 +305,15 @@ def test_oversized_message_rejected_400(isolated_client):
     client, _, _ = isolated_client
     resp = client.post("/api/chat", json={"message": "x" * 5000})
     assert resp.status_code == 400
-    assert "zu lang" in resp.json()["detail"]
+    assert "too long" in resp.json()["detail"]
 
 
-def test_empty_message_rejected_400_german(isolated_client):
+def test_empty_message_rejected_400(isolated_client):
     client, _, _ = isolated_client
     for bad in ["", "   "]:
         resp = client.post("/api/chat", json={"message": bad})
         assert resp.status_code == 400, bad
-        assert "Nachricht" in resp.json()["detail"]
+        assert "message" in resp.json()["detail"]
 
 
 def test_oversized_body_rejected_413(isolated_client):
@@ -335,7 +335,7 @@ def test_demo_reset_requires_admin_key(isolated_client):
 
     no_key = client.post("/api/demo/reset")
     assert no_key.status_code == 401
-    assert "Admin-Schlüssel" in no_key.json()["detail"]
+    assert "Admin key" in no_key.json()["detail"]
 
     wrong_key = client.post("/api/demo/reset", headers=WRONG_HEADERS)
     assert wrong_key.status_code == 401
@@ -393,27 +393,27 @@ def test_ai_quota_fallback_to_mock(isolated_client, monkeypatch):
     settings.llm_daily_request_cap = 2
 
     first = client.post(
-        "/api/chat", json={"message": "Wo bleibt meine Bestellung #10482?"}
+        "/api/chat", json={"message": "Where is my order #10482?"}
     )
     assert first.status_code == 200
     assert first.json()["provider"] == "stub-provider"
     assert "quota_fallback" not in first.json()
 
     second = client.post(
-        "/api/chat", json={"message": "Wo bleibt meine Bestellung #10482?"}
+        "/api/chat", json={"message": "Where is my order #10482?"}
     )
     assert second.status_code == 200
     assert second.json()["provider"] == "stub-provider"
 
     # Cap exhausted: honest fallback to the mock, never a failure.
     third = client.post(
-        "/api/chat", json={"message": "Wo bleibt meine Bestellung #10482?"}
+        "/api/chat", json={"message": "Where is my order #10482?"}
     )
     assert third.status_code == 200
     body = third.json()
     assert body["provider"] == "mock"
     assert body["quota_fallback"] is True
-    assert "Tageskontingent" in body["quota_note"]
+    assert "daily AI quota" in body["quota_note"]
     # The answer still uses real demo data (mock classifier → order found).
     assert body["order"] is not None
     assert body["order"]["order_ref"] == "10482"

@@ -94,13 +94,13 @@ class MockLLMProvider(LLMProvider):
     the real classifier contract (JSON in, JSON out) without needing an API
     key or network access. Never mistake its output for a production model.
 
-    Phase 2: German keyword rules covering the four demo scenarios
+    Phase 2: English keyword rules covering the four demo scenarios
     (order_status, product_question, return_request, human_support). The
     pipeline validates everything downstream — the mock only suggests an
     intent; lookups, policy checks, and replies are deterministic code.
 
     Phase 3: extended intent set (shipping_info, payment_question,
-    product_availability, order_cancel, greeting) with German keyword
+    product_availability, order_cancel, greeting) with English keyword
     rules, a documented keyword-strength confidence heuristic, and
     structured extraction fields (product_hint, return_reason, language).
 
@@ -113,99 +113,85 @@ class MockLLMProvider(LLMProvider):
     references score 0.70; no rule match → unknown at 0.35 (always human).
     """
 
-    # Checked in order — first matching group wins. German keywords come
-    # first inside each group; the English set keeps the predecessor's
-    # contract tests green. Specific intents (shipping, payment,
-    # availability, cancel) are checked BEFORE the generic order_status
-    # and product_question rules so that e.g. "Versand meiner Bestellung"
-    # routes to shipping_info even though it contains "Bestellung".
+    # Checked in order — first matching group wins. Specific intents
+    # (complaint, cancel, return, shipping, payment, availability) are
+    # checked BEFORE the generic order_status and product_question rules
+    # so that e.g. "shipping for my order" routes to shipping_info even
+    # though it contains "order". Complaint is checked BEFORE
+    # return_request so a message like "I want to return this, it's
+    # terrible" routes to complaint, not return_request.
     _RULES: tuple[tuple[str, tuple[str, ...], float], ...] = (
         ("human_support", (
-            "mitarbeiter", "mensch", "support", "kontakt zum team",
             "human", "real person", "agent", "representative",
-            "someone real", "call me", "talk to",
+            "someone real", "call me", "support", "contact the team",
         ), 0.95),
         ("complaint", (
-            "beschwerde", "unverschämt", "ärgerlich", "nie angekommen",
-            "nicht angekommen", "nicht erhalten",
-            "never arrived", "did not arrive", "complain", "terrible",
-            "awful", "angry", "furious",
+            "complaint", "never arrived", "did not arrive", "not arrived",
+            "terrible", "awful", "angry", "furious",
             "disappointed", "worst", "rude", "unacceptable",
             "horrible",
         ), 0.90),
         ("order_cancel", (
-            "bestellung stornieren", "stornieren", "stornierung",
-            "widerrufen", "auftrag stornieren", "bestellung abbrechen",
             "cancel my order", "cancel the order", "cancel order",
         ), 0.92),
         ("return_request", (
-            "zurücksenden", "rücksenden", "retoure", "rückgabe",
-            "zurückgeben", "umtausch", "retourenschein",
-            "refund", "money back", "chargeback", "give me my money",
+            "return", "send back", "send it back",
+            "refund", "chargeback", "exchange", "i would like to return",
         ), 0.92),
         ("shipping_info", (
-            "versandkosten", "versandkostenfrei", "lieferzeit",
-            "wie lange dauert der versand", "versanddauer", "lieferdauer",
-            "frachtkosten", "versand",
-            "shipping time", "shipping cost", "shipping costs",
-            "do you ship", "delivery time", "how long does shipping take",
-            "how long does delivery take",
+            "shipping cost", "delivery time",
+            "how long does shipping take", "shipping",
         ), 0.88),
         ("payment_question", (
-            "zahlungsarten", "zahlungsart", "paypal", "rechnung", "zahlung",
-            "kreditkarte", "vorkasse", "kauf auf rechnung",
-            "lastschrift", "klarna",
-            "payment method", "payment methods", "pay with", "pay by",
-            "credit card",
+            "payment methods", "pay with", "paypal", "invoice",
+            "prepayment",
         ), 0.88),
         ("product_availability", (
-            "auf lager", "lieferbar", "verfügbar", "vorrätig", "vorrat",
-            "noch da", "lagerbestand",
-            "in stock", "availability", "available",
+            "in stock", "still available", "available",
         ), 0.87),
         ("order_status", (
-            "wo bleibt meine bestellung", "bestellstatus", "lieferstatus",
-            "sendungsverfolgung", "wo ist mein", "wo ist meine",
-            "wann kommt", "liefertermin", "paket", "tracking",
-            "bestellung",
-            "where is my order", "order status", "track my order",
-            "tracking", "delivery status", "when will",
-            "has my order", "order #", "my package",
+            "where is my order", "order status", "delivery status",
+            "track my order", "tracking", "where is", "when will",
+            "my package", "has my order", "order #", "order",
         ), 0.93),
         ("product_question", (
-            "spülmaschinengeeignet", "spülmaschine", "material", "volumen",
-            "farbe", "frage zum", "eigenschaft", "ist diese", "ist dieses",
-            "ist dieser", "ist das", "ist der", "ist die",
-            "wie groß", "wie viel", "gibt es",
-            "how do", "how can", "what is",
-            "return policy", "opening hours", "where are you located",
+            "dishwasher-safe", "dishwasher", "material", "volume",
+            "color", "is this", "is the", "how big", "how much",
+            "do you have", "question about",
         ), 0.85),
     )
 
-    # Greeting is deliberately checked LAST: "Hallo, wo bleibt meine
-    # Bestellung?" must route to order_status, not greeting. Short "hi"
+    # Greeting is deliberately checked LAST: "Hello, where is my order
+    # #10482?" must route to order_status, not greeting. Short "hi"
     # needs a word boundary so it doesn't match inside other words.
     _GREETING_PHRASES = (
-        "hallo", "guten tag", "guten morgen", "guten abend",
-        "moin", "servus", "hey",
+        "hello", "good morning", "good afternoon", "good evening",
+        "hey",
     )
     _GREETING_WORD_RE = re.compile(r"\bhi\b")
 
     # product_hint extraction: message substrings → demo product name.
     _PRODUCT_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
-        ("AquaPure 750", ("trinkflasche", "aquapure")),
-        ("Solarbank 30000mAh", ("solarbank", "powerbank")),
-        ("Kaffeemühle manuell", ("kaffeemühle", "kaffeemuehle")),
-        ("LED-Schreibtischlampe", ("schreibtischlampe", "led-lampe", "lampe")),
+        ("AquaPure 750", ("water bottle", "bottle", "aquapure", "trinkflasche")),
+        ("SolarBank 30000mAh", ("solar bank", "solarbank", "power bank", "powerbank")),
+        ("Manual Coffee Grinder", ("coffee grinder", "coffee", "kaffeemühle", "kaffeemuehle")),
+        ("LED Desk Lamp", ("desk lamp", "led lamp", "lamp", "schreibtischlampe")),
     )
 
-    # return_reason extraction for return_request messages.
+    # return_reason extraction for return_request messages. The reason
+    # *codes* stay as-is — they are internal identifiers referenced by
+    # the CLASSIFICATION_SYSTEM_PROMPT contract and the return policy.
     _RETURN_REASONS: tuple[tuple[str, tuple[str, ...]], ...] = (
-        ("defekt", ("defekt", "kaputt", "beschädigt", "beschadigt")),
-        ("passt_nicht", ("passt nicht", "zu klein", "zu groß", "zu gross")),
-        ("falsche_ware", ("falsch", "vertauscht", "falsche")),
-        ("verspaetete_lieferung", ("spät", "spat", "verspätet", "verspatet", "zu lange")),
-        ("gefaellt_nicht", ("nicht gefallen", "gefällt nicht", "gefallt nicht")),
+        ("defekt", ("defective", "defect", "broken", "damaged",
+                    "not working", "faulty")),
+        ("passt_nicht", ("doesn't fit", "does not fit", "too small",
+                         "too big", "wrong size")),
+        ("falsche_ware", ("wrong item", "wrong product", "wrong one",
+                          "mixed up", "not what i ordered")),
+        ("verspaetete_lieferung", ("late", "delayed", "took too long",
+                                  "arrived late")),
+        ("gefaellt_nicht", ("don't like", "do not like", "didn't like",
+                            "not as expected", "dislike")),
     )
 
     # Order references: optional '#', 4–6 digits (e.g. "#10482", "10482").

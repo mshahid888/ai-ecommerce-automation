@@ -11,15 +11,15 @@ function statusBadgeClass(status: string): string {
 }
 
 function statusLabel(status: string): string {
-  if (status === "open") return "Offen";
-  if (status === "closed") return "Geschlossen";
+  if (status === "open") return "Open";
+  if (status === "closed") return "Closed";
   return status;
 }
 
 function priorityLabel(priority: string | null): string {
-  if (priority === "high") return "Hoch";
+  if (priority === "high") return "High";
   if (priority === "normal") return "Normal";
-  if (priority === "low") return "Niedrig";
+  if (priority === "low") return "Low";
   return priority ?? "–";
 }
 
@@ -32,7 +32,7 @@ function priorityBadgeClass(priority: string | null): string {
 function formatDate(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString("de-DE");
+  return date.toLocaleString("en-GB");
 }
 
 export default function TicketsPage() {
@@ -72,8 +72,8 @@ export default function TicketsPage() {
             Tickets
           </h1>
           <p className="mt-1 text-sm text-slate-600">
-            Eskalierte Anfragen aus dem Chat –{" "}
-            <span className="font-medium">Demo-Daten</span>.
+            Escalated requests from the chat –{" "}
+            <span className="font-medium">demo data</span>.
           </p>
         </div>
         <button
@@ -86,13 +86,13 @@ export default function TicketsPage() {
               : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
           }`}
         >
-          {onlyOpen ? "Alle anzeigen" : "Nur offene anzeigen"}
+          {onlyOpen ? "Show all" : "Show open only"}
         </button>
       </div>
 
       {loading && (
         <p role="status" className="text-sm text-slate-600">
-          Tickets werden geladen …
+          Loading tickets…
         </p>
       )}
 
@@ -101,8 +101,8 @@ export default function TicketsPage() {
           role="alert"
           className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm"
         >
-          Das Backend ist nicht erreichbar – Tickets können derzeit nicht
-          angezeigt werden.
+          The backend is unavailable – tickets cannot be displayed right
+          now.
         </div>
       )}
 
@@ -110,8 +110,8 @@ export default function TicketsPage() {
         <div className="rounded-xl border border-slate-200 bg-white px-4 py-8 text-center shadow-sm">
           <p className="text-sm text-slate-600">
             {onlyOpen
-              ? "Keine offenen Tickets vorhanden."
-              : "Noch keine Tickets vorhanden. Starten Sie eine Unterhaltung auf der Chat-Seite – Eskalationen und Retouren erzeugen automatisch ein Ticket."}
+              ? "No open tickets."
+              : "No tickets yet. Start a conversation on the chat page – escalations and returns automatically create a ticket."}
           </p>
         </div>
       )}
@@ -120,27 +120,27 @@ export default function TicketsPage() {
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="w-full min-w-[720px] text-left text-sm">
             <caption className="sr-only">
-              Liste der Support-Tickets – Zeile anklicken für Details
+              List of support tickets – click a row for details
             </caption>
             <thead className="border-b border-slate-200 bg-slate-50">
               <tr>
                 <th scope="col" className="px-4 py-3 font-semibold text-slate-700">
-                  Ticket-ID
+                  Ticket ID
                 </th>
                 <th scope="col" className="px-4 py-3 font-semibold text-slate-700">
-                  Anliegen
+                  Intent
                 </th>
                 <th scope="col" className="px-4 py-3 font-semibold text-slate-700">
                   Status
                 </th>
                 <th scope="col" className="px-4 py-3 font-semibold text-slate-700">
-                  Priorität
+                  Priority
                 </th>
                 <th scope="col" className="px-4 py-3 font-semibold text-slate-700">
-                  Bestellung
+                  Order
                 </th>
                 <th scope="col" className="px-4 py-3 font-semibold text-slate-700">
-                  Erstellt
+                  Created
                 </th>
               </tr>
             </thead>
