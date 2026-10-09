@@ -50,12 +50,14 @@ Phase 2: Demo-Store + deutschsprachiger Kundensupport-Chat, Ende-zu-Ende verdrah
     Bestellung, Erstellt), klickbar → Ticket-Detailseite mit
     Zusammenfassung, Eskalationsgrund, empfohlener Aktion, verknüpfter
     Unterhaltung und Ereignisverlauf
-- **Tests:** 67 pytest-Tests, alle grün (Health, Provider-Vertrag, Validatoren,
+- **Tests:** 107 pytest-Tests, alle grün (Health, Provider-Vertrag, Validatoren,
   Store-Isolation, Demo-Reset, Chat-Pipeline: alle 4 Szenarien + Reset,
   Phase 3: 11 Intents, Konfidenz-Kalibrierung, Eskalations-Policy,
   strikte Klassifikations-Validierung inkl. Stub-Provider-Fallbacks,
   deutsche Edge Cases, Phase 6: Dashboard-Summary, Ticket-Detail,
-  Unterhaltungen, Store-Isolation der Ops-Endpunkte).
+  Unterhaltungen, Store-Isolation der Ops-Endpunkte, Phase 7: 19
+  Security/Abuse-Tests, Phase 9: Shopify-Adapter + Webhooks, identische
+  Antworten unter `demo`/`shopify_simulated`).
 
 ## Phase 6 (verifiziert) — Ops-Dashboard + Ticket-Detail + Event-Timeline
 
@@ -110,6 +112,32 @@ Phase 2: Demo-Store + deutschsprachiger Kundensupport-Chat, Ende-zu-Ende verdrah
   Audit-Log, Input-Härtung: siehe `docs/PHASE-7-REPORT.md` und
   `docs/SECURITY.md`. Vor Phase 8 (Public Deploy): `ADMIN_API_KEY` als
   echte Env-Variable auf dem Backend setzen, `CORS_ORIGINS` einengen.
+
+## Kommerzielle Bereitschaft (Phase 10 — Vertriebsunterlagen)
+
+Video-Skript und Sales-Kit für das erste Kundengespräch. Alle Dokumente
+beschreiben ausschließlich den verifizierten Produktstand — keine
+erfundenen Features, keine Erfolgsversprechen.
+
+- **Video:** `docs/VIDEO-SCRIPT.md` — 60–90-Sekunden-Skript (deutsch),
+  Szene für Szene mit Voiceover-Text, UI-Capture-Anleitung und
+  Produktionshinweisen (16:9 + 9:16). Skript, kein Render.
+- **Sales-Kit** (`docs/sales/`):
+  - `01-feature-list.md` — was das Produkt heute kann (getrennt:
+    verfügbar / simuliert / später)
+  - `02-demo-instructions.md` — Selbstversuch für Interessenten
+    (4 Szenarien, Gegenproben, Reset)
+  - `03-known-limitations.md` — ehrliche Grenzen
+  - `04-sample-store-policy.md` — Richtlinien-Vorlage für Kunden
+  - `05-demo-scenarios.md` — erwartetes Systemverhalten Schritt für Schritt
+  - `06-sales-description-de.md` — kurzer deutscher Verkaufstext
+  - `07-pilot-scope.md` — 4-Wochen-Pilot: Ablauf, Liefergegenstände,
+    Erfolgskriterien (keine ROI-Versprechen)
+  - `08-client-onboarding-checklist.md` — benötigte Daten, Entscheidungen,
+    Technik
+  - `09-production-integration-checklist.md` — vom Demo zum Echtbetrieb
+    (inkl. offener DSGVO-Fragen — keine „voll konform"-Behauptungen)
+  - `10-test-report.md` — 107/107 Tests, Live-Verifikation, Abuse-Tests
 
 ## Projekt starten
 
