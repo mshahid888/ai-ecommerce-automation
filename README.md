@@ -106,8 +106,10 @@ Phase 2: Demo-Store + deutschsprachiger Kundensupport-Chat, Ende-zu-Ende verdrah
   nutzt den konfigurierten Provider).
 - Mehrstufige Dialoge (Kontext über Nachrichten hinweg) sind noch nicht
   implementiert — jede Nachricht startet eine eigene Konversation.
-- Rate Limiting, Quotas, Admin-API-Keys kommen in Phase 7 (Pflicht vor
-  öffentlichem Demo-Deploy in Phase 8).
+- Phase 7 (verifiziert) — Rate Limiting, KI-Tageskontingent, Admin-Key,
+  Audit-Log, Input-Härtung: siehe `docs/PHASE-7-REPORT.md` und
+  `docs/SECURITY.md`. Vor Phase 8 (Public Deploy): `ADMIN_API_KEY` als
+  echte Env-Variable auf dem Backend setzen, `CORS_ORIGINS` einengen.
 
 ## Projekt starten
 
@@ -157,7 +159,13 @@ cd ../frontend && npm run build && npm run lint
 | `CORS_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | Komma-getrennte Origins für das Frontend |
 | `CONFIDENCE_THRESHOLD` | `0.6` | Konfidenzschwelle für Eskalation |
 | `LLM_MAX_TOKENS_PER_REQUEST` | `300` | Token-Ceiling pro echtem Provider-Aufruf |
-| `LLM_DAILY_REQUEST_CAP` | `500` | Tages-Quota (Durchsetzung erst Phase 7) |
+| `LLM_DAILY_REQUEST_CAP` | `500` | Tages-Quota echter KI-Calls (Phase 7: durchgesetzt, Mock-Fallback bei Überschreitung) |
+| `ADMIN_API_KEY` | (generiert) | Admin-Key für `POST /api/demo/reset` (`X-Admin-Key`-Header); nie committen |
+| `RATE_LIMIT_ENABLED` | `true` | Rate Limiting an/aus |
+| `RL_CHAT_PER_MINUTE` | `30` | Chat-Limit pro IP/Minute |
+| `RL_CHAT_PER_DAY` | `200` | Chat-Limit pro IP/Tag |
+| `RL_READ_PER_MINUTE` | `60` | Lese-Limit pro IP/Minute |
+| `RL_RESET_PER_HOUR` | `5` | Reset-Limit pro IP/Stunde |
 
 ## Struktur
 

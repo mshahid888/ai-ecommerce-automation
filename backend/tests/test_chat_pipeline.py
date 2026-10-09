@@ -337,7 +337,9 @@ def test_demo_reset_restores_seed_data(isolated_client):
     finally:
         conn.close()
 
-    resp = client.post("/api/demo/reset")
+    resp = client.post(
+        "/api/demo/reset", headers={"X-Admin-Key": "phase7-test-admin-key"}
+    )
     assert resp.status_code == 200
 
     conn = connect(db_path)

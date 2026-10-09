@@ -46,6 +46,10 @@ export default function ChatPage() {
   const [ticketNotice, setTicketNotice] = useState<string | null>(null);
   const [resetNotice, setResetNotice] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
+  // Phase 7: admin key for the demo reset — kept in memory only, never
+  // persisted in the browser.
+  const [adminKey, setAdminKey] = useState("");
+  const [quotaNote, setQuotaNote] = useState<string | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -69,6 +73,10 @@ export default function ChatPage() {
         ticketId != null
           ? `Support-Ticket #${ticketId} erstellt – ein Mitarbeiter prüft den Fall.`
           : null,
+      );
+      // Phase 7: honest note when the AI quota was exhausted.
+      setQuotaNote(
+        result.quota_fallback && result.quota_note ? result.quota_note : null,
       );
       setMessages((prev) => [
         ...prev,
@@ -111,9 +119,11 @@ export default function ChatPage() {
     setResetting(true);
     setResetNotice(null);
     try {
-      const result = await resetDemo();
+      // Phase 7: the reset requires the server-side admin key.
+      const result = await resetDemo(adminKey.trim() || undefined);
       setTimeline([]);
       setTicketNotice(null);
+      setQuotaNote(null);
       setBackendDown(false);
       setMessages([
         {
@@ -147,14 +157,28 @@ export default function ChatPage() {
             Bestellstatus, Produktkatalog und Retourenrichtlinie.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleResetDemo}
-          disabled={resetting}
-          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {resetting ? "Wird zurückgesetzt …" : "Demo zurücksetzen"}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor="admin-key" className="sr-only">
+            Admin-Schlüssel
+          </label>
+          <input
+            id="admin-key"
+            type="password"
+            value={adminKey}
+            onChange={(event) => setAdminKey(event.target.value)}
+            placeholder="Admin-Schlüssel"
+            autoComplete="off"
+            className="w-40 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+          />
+          <button
+            type="button"
+            onClick={handleResetDemo}
+            disabled={resetting}
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {resetting ? "Wird zurückgesetzt …" : "Demo zurücksetzen"}
+          </button>
+        </div>
       </div>
 
       {ticketNotice && (
@@ -169,6 +193,15 @@ export default function ChatPage() {
       {resetNotice && (
         <p role="status" className="text-sm text-slate-600">
           {resetNotice}
+        </p>
+      )}
+
+      {quotaNote && (
+        <p
+          role="status"
+          className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900"
+        >
+          {quotaNote}
         </p>
       )}
 

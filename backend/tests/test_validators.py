@@ -17,7 +17,12 @@ def test_valid_payload_accepted():
 
 
 def test_empty_message_rejected():
-    for bad in ["", "   ", None, 123]:
+    # Phase 7: German, customer-facing error messages.
+    for bad in ["", "   "]:
+        ok, err = validate_message_payload({"message": bad}, _settings())
+        assert not ok, bad
+        assert "Nachricht" in err
+    for bad in [None, 123]:
         ok, err = validate_message_payload({"message": bad}, _settings())
         assert not ok, bad
         assert "message" in err
@@ -39,7 +44,7 @@ def test_message_length_cap_enforced():
     assert ok
     ok, err = validate_message_payload({"message": "x" * 2001}, settings)
     assert not ok
-    assert "too long" in err
+    assert "zu lang" in err
 
 
 def test_body_cap_logic():

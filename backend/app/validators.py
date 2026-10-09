@@ -3,6 +3,10 @@
 Ported from the predecessor project
 (``ai-customer-support-automation/src/validators.py``); caps stay the same:
 2,000 characters per message, 64 KiB per request body.
+
+Phase 7: error messages are German (customer-facing), still deliberately
+generic — they must not leak internals. Empty/whitespace messages are
+rejected with HTTP 400.
 """
 
 from __future__ import annotations
@@ -21,28 +25,37 @@ def validate_message_payload(
     Error messages are deliberately generic — they must not leak internals.
     """
     if not isinstance(payload, dict):
-        return False, "Request body must be a JSON object."
+        return False, "Die Anfrage muss ein JSON-Objekt sein."
+    if "message" not in payload:
+        return False, "Das Feld 'message' ist erforderlich."
 
     message = payload.get("message")
-    if not isinstance(message, str) or not message.strip():
-        return False, "Field 'message' is required and must be a non-empty string."
+    if not isinstance(message, str):
+        return False, "Das Feld 'message' muss eine Zeichenkette sein."
+    if not message.strip():
+        return False, (
+            "Bitte geben Sie eine Nachricht ein — leere Nachrichten "
+            "können nicht verarbeitet werden."
+        )
     if len(message) > settings.max_message_length:
         return False, (
-            "Field 'message' is too long "
-            f"(max {settings.max_message_length} characters)."
+            "Ihre Nachricht ist zu lang "
+            f"(maximal {settings.max_message_length} Zeichen)."
         )
 
     customer_id = payload.get("customer_id")
     if customer_id is not None and (
         not isinstance(customer_id, str) or len(customer_id) > 64
     ):
-        return False, "Field 'customer_id' must be a short string when provided."
+        return False, (
+            "Das Feld 'customer_id' muss eine kurze Zeichenkette sein."
+        )
 
     store_id = payload.get("store_id")
     if store_id is not None and (
         not isinstance(store_id, str) or len(store_id) > 64
     ):
-        return False, "Field 'store_id' must be a short string when provided."
+        return False, "Das Feld 'store_id' muss eine kurze Zeichenkette sein."
 
     return True, ""
 

@@ -3,6 +3,7 @@
 .env.local
 *.pem
 *.key
+.admin_key
 
 # Python
 .venv/

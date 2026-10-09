@@ -50,6 +50,10 @@ export interface ChatResponse {
   ticket: { id: number | string } | null;
   provider: string;
   escalated: boolean;
+  /** Phase 7: true when the daily AI quota was exhausted and the deterministic
+   *  mock provider answered instead. */
+  quota_fallback?: boolean;
+  quota_note?: string;
 }
 
 /** A ticket row from GET /api/tickets. */
@@ -95,6 +99,7 @@ export class ApiError extends Error {
 interface ErrorPayload {
   error?: string;
   detail?: string;
+  message?: string;
   reply_de?: string;
 }
 
@@ -108,8 +113,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // Response has no JSON body — keep the generic message.
     }
+    // Prefer the backend's German message; never render raw internals —
+    // FastAPI error bodies are controlled and generic by design.
     const message =
-      payload?.error ?? payload?.detail ?? `Backend antwortet mit HTTP ${res.status}`;
+      payload?.message ??
+      payload?.detail ??
+      payload?.error ??
+      `Backend antwortet mit HTTP ${res.status}`;
     throw new ApiError(res.status, message, payload?.reply_de);
   }
 
@@ -227,8 +237,14 @@ export function getHealth(): Promise<{ status?: string }> {
   return request<{ status?: string }>("/health");
 }
 
-export function resetDemo(): Promise<{ status: string; demo_store: string }> {
+/** Phase 7: demo reset requires the server-side admin key
+ * (``X-Admin-Key``). The key is entered by the operator and kept in
+ * memory only — never persisted in the browser. */
+export function resetDemo(
+  adminKey?: string,
+): Promise<{ status: string; demo_store: string }> {
   return request<{ status: string; demo_store: string }>("/api/demo/reset", {
     method: "POST",
+    headers: adminKey ? { "X-Admin-Key": adminKey } : undefined,
   });
 }

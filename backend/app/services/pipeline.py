@@ -29,9 +29,14 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..ai.providers import LLMError, LLMProvider
+from ..ai.quota import (
+    EVENT_LLM_QUOTA_FALLBACK,
+    EVENT_LLM_QUOTA_FALLBACK_LABEL,
+)
 from ..config import Settings
 from ..db.repositories import EventRepository, TicketRepository
 from ..rules import product_rules
+from ..security.audit import log_audit
 from ..rules.escalation import (
     REASON_ALWAYS_HUMAN,
     REASON_LOW_CONFIDENCE,
@@ -73,6 +78,7 @@ _EVENT_LABELS = {
     EVENT_RESPONSE_GENERATED: "Antwort erstellt",
     EVENT_INTERACTION_LOGGED: "Supportvorgang protokolliert",
     EVENT_STORE_INFO: "Shop-Informationen abgerufen",
+    EVENT_LLM_QUOTA_FALLBACK: EVENT_LLM_QUOTA_FALLBACK_LABEL,
 }
 
 _DEMO_DISCLAIMER = "Hinweis: Demo-Umgebung — alle Daten sind simuliert."
@@ -155,12 +161,14 @@ class _Pipeline:
         conn: sqlite3.Connection,
         provider: LLMProvider,
         settings: Settings,
+        actor_ip: str | None = None,
     ) -> None:
         self.message = message
         self.store_id = store_id
         self.conn = conn
         self.provider = provider
         self.settings = settings
+        self.actor_ip = actor_ip
         self.events = EventRepository(conn)
         self.tickets = TicketRepository(conn)
         self.conversation_id: int = 0
@@ -195,6 +203,20 @@ class _Pipeline:
             "ticket_id": self.ticket_id, "intent": intent,
             "order_ref": order_ref,
         })
+        # Phase 7: ticket creations are audit-logged (committed with the
+        # pipeline transaction at the end of run_pipeline).
+        log_audit(
+            self.conn,
+            action="ticket_created",
+            ip=self.actor_ip,
+            details={
+                "ticket_id": self.ticket_id,
+                "intent": intent,
+                "order_ref": order_ref,
+                "priority": priority,
+            },
+            store_id=self.store_id,
+        )
         return self.ticket_id
 
     def timeline(self) -> list[dict[str, Any]]:
@@ -567,6 +589,18 @@ class _Pipeline:
         self.log(EVENT_ESCALATED, {
             "ticket_id": self.ticket_id, "reason": reason_code,
         })
+        # Phase 7: escalations are audit-logged (human handoffs matter).
+        log_audit(
+            self.conn,
+            action="escalated",
+            ip=self.actor_ip,
+            details={
+                "ticket_id": self.ticket_id,
+                "intent": intent,
+                "reason": reason_code,
+            },
+            store_id=self.store_id,
+        )
 
         if reason_code == REASON_LOW_CONFIDENCE:
             return (
@@ -624,14 +658,23 @@ def run_pipeline(
     conn: sqlite3.Connection,
     provider: LLMProvider,
     settings: Settings,
+    actor_ip: str | None = None,
+    quota_fallback: bool = False,
 ) -> PipelineResult:
     """Run the chat pipeline for one customer message.
+
+    ``actor_ip`` is the caller's client IP for audit logging (hashed
+    before storage); it is optional so the pipeline stays usable in
+    non-HTTP contexts. ``quota_fallback`` records an honest workflow
+    event when the deterministic mock was used because the daily AI
+    quota was exhausted.
 
     Raises:
         LLMError: when the AI provider fails. The caller converts this to
             the honest ``ai_provider_unavailable`` response.
     """
-    pipe = _Pipeline(message, store_id, conn, provider, settings)
+    pipe = _Pipeline(message, store_id, conn, provider, settings,
+                     actor_ip=actor_ip)
 
     # --- Step 1: conversation + persist user message ----------------------
     convo = conn.execute(
@@ -711,6 +754,13 @@ def run_pipeline(
         "INSERT INTO messages (conversation_id, role, content) VALUES (?, ?, ?)",
         (pipe.conversation_id, "assistant", reply),
     )
+    if quota_fallback:
+        # Honest workflow event: the mock was used because the daily AI
+        # quota was exhausted — this really happened.
+        pipe.log(EVENT_LLM_QUOTA_FALLBACK, {
+            "cap": settings.llm_daily_request_cap,
+            "provider": settings.llm_provider,
+        })
     pipe.log(EVENT_RESPONSE_GENERATED, {"escalated": pipe.escalated})
     pipe.log(EVENT_INTERACTION_LOGGED, {
         "intent": intent, "ticket_id": pipe.ticket_id,

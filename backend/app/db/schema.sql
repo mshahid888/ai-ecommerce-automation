@@ -128,3 +128,27 @@ CREATE INDEX IF NOT EXISTS idx_events_store           ON workflow_events(store_i
 CREATE INDEX IF NOT EXISTS idx_events_conversation    ON workflow_events(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_credentials_store      ON integration_credentials(store_id);
 CREATE INDEX IF NOT EXISTS idx_policies_store         ON store_policies(store_id);
+
+-- Phase 7: append-only audit log (security events). Rows are never
+-- updated or deleted by the application; the demo reset does NOT touch
+-- this table, so abuse evidence survives resets.
+CREATE TABLE IF NOT EXISTS audit_log (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    actor_ip_hash TEXT,
+    action        TEXT NOT NULL,
+    details_json  TEXT,
+    store_id      TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action);
+CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
+
+-- Phase 7: daily real-LLM usage counters for the AI spending cap
+-- (LLM_DAILY_REQUEST_CAP). Mock/stub calls are never counted.
+CREATE TABLE IF NOT EXISTS ai_usage (
+    usage_date TEXT NOT NULL,
+    provider   TEXT NOT NULL,
+    calls      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (usage_date, provider)
+);

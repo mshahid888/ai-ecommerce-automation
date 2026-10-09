@@ -73,6 +73,20 @@ class Settings:
         )
         self.max_message_length: int = _env_int("MAX_MESSAGE_LENGTH", 2000)
         self.max_body_bytes: int = _env_int("MAX_BODY_BYTES", 65536)
+        # -- Phase 7: abuse protection -----------------------------------
+        # Server-side admin key for mutating admin endpoints
+        # (POST /api/demo/reset, ...). Generated + persisted on first run
+        # when absent (see security/admin.py). Never sent to the frontend.
+        self.admin_api_key: str | None = _env("ADMIN_API_KEY", None)
+        self.admin_key_file: Path = _BACKEND_ROOT / "data" / ".admin_key"
+        # Rate limiting (in-memory sliding window, per client IP).
+        self.rate_limit_enabled: bool = _env_bool("RATE_LIMIT_ENABLED", True)
+        self.rl_chat_per_minute: int = _env_int("RL_CHAT_PER_MINUTE", 30)
+        self.rl_chat_per_day: int = _env_int("RL_CHAT_PER_DAY", 200)
+        self.rl_read_per_minute: int = _env_int("RL_READ_PER_MINUTE", 60)
+        self.rl_reset_per_hour: int = _env_int("RL_RESET_PER_HOUR", 5)
+        # Fraction of rate-limit rejections written to the audit log.
+        self.audit_sample_rate: float = _env_float("AUDIT_SAMPLE_RATE", 0.05)
         # Accept either "sqlite:///./data/demo.db" or a bare path.
         raw_db = _env("DATABASE_URL", "sqlite:///./data/demo.db") or ""
         if raw_db.startswith("sqlite:///"):
@@ -91,7 +105,6 @@ class Settings:
             for origin in raw_origins.split(",")
             if origin.strip()
         ]
-        self.rate_limit_placeholder: None = None
 
 
 settings = Settings()

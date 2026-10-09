@@ -42,6 +42,10 @@ def isolated_client(tmp_path):
         app.dependency_overrides.pop(deps.get_settings, None)
 
 
+# Phase 7: demo reset requires the server-side admin key.
+ADMIN_HEADERS = {"X-Admin-Key": "phase7-test-admin-key"}
+
+
 def _count(conn: sqlite3.Connection, table: str, where: str = "") -> int:
     row = conn.execute(f"SELECT COUNT(*) AS n FROM {table} {where}").fetchone()
     return row["n"]
@@ -49,7 +53,7 @@ def _count(conn: sqlite3.Connection, table: str, where: str = "") -> int:
 
 def test_reset_seeds_demo_store(isolated_client):
     client, db_path = isolated_client
-    resp = client.post("/api/demo/reset")
+    resp = client.post("/api/demo/reset", headers=ADMIN_HEADERS)
     assert resp.status_code == 200
     assert resp.json() == {"status": "reset", "demo_store": DEMO_STORE_ID}
 
@@ -80,7 +84,7 @@ def test_reset_seeds_demo_store(isolated_client):
 
 def test_reset_removes_demo_tickets_but_keeps_non_demo(isolated_client):
     client, db_path = isolated_client
-    client.post("/api/demo/reset")
+    client.post("/api/demo/reset", headers=ADMIN_HEADERS)
 
     # A non-demo tenant row must survive resets.
     conn = connect(db_path)
@@ -106,7 +110,7 @@ def test_reset_removes_demo_tickets_but_keeps_non_demo(isolated_client):
     tickets_before = client.get("/api/tickets").json()
     assert len(tickets_before) >= 1
 
-    resp = client.post("/api/demo/reset")
+    resp = client.post("/api/demo/reset", headers=ADMIN_HEADERS)
     assert resp.status_code == 200
     assert client.get("/api/tickets").json() == []
 
@@ -122,7 +126,7 @@ def test_reset_removes_demo_tickets_but_keeps_non_demo(isolated_client):
 def test_reset_forbidden_when_demo_mode_off(isolated_client, tmp_path):
     client, db_path = isolated_client
     app.dependency_overrides[deps.get_settings] = lambda: _off_settings(db_path)
-    resp = client.post("/api/demo/reset")
+    resp = client.post("/api/demo/reset", headers=ADMIN_HEADERS)
     assert resp.status_code == 403
 
 
@@ -135,8 +139,8 @@ def _off_settings(db_path):
 
 def test_reset_is_idempotent(isolated_client):
     client, db_path = isolated_client
-    client.post("/api/demo/reset")
-    resp = client.post("/api/demo/reset")
+    client.post("/api/demo/reset", headers=ADMIN_HEADERS)
+    resp = client.post("/api/demo/reset", headers=ADMIN_HEADERS)
     assert resp.status_code == 200
     conn = connect(db_path)
     try:

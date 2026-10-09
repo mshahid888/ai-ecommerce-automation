@@ -227,6 +227,46 @@ export default function DashboardPage() {
               </ol>
             )}
           </section>
+          <section aria-label="Sicherheit und Datenschutz (Demo)">
+            <h2 className="text-lg font-semibold text-slate-900">
+              Sicherheit &amp; Datenschutz (Demo)
+            </h2>
+            <div className="mt-3 rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-700 shadow-sm">
+              <ul className="list-disc space-y-2 pl-5">
+                <li>
+                  <span className="font-medium">Simulierte Daten:</span>{" "}
+                  Alle Bestellungen, Produkte und Kunden in dieser Demo sind
+                  frei erfunden. Es werden keine echten Bestellungen
+                  verarbeitet und keine echten Retouren oder
+                  Rückerstattungen ausgeführt.
+                </li>
+                <li>
+                  <span className="font-medium">Keine echten Zahlungen:</span>{" "}
+                  Die Demo fragt keine Zahlungsdaten ab und speichert keine
+                  personenbezogenen Daten echter Kunden.
+                </li>
+                <li>
+                  <span className="font-medium">Nutzungsbegrenzung:</span>{" "}
+                  Anfragen sind pro Besucher begrenzt (Chat, Leserequests und
+                  Demo-Zurücksetzung). Bei Überschreitung antwortet das
+                  Backend mit HTTP&nbsp;429 und einer Wartezeit.
+                </li>
+                <li>
+                  <span className="font-medium">KI-Kontingent:</span> Die
+                  Anzahl echter KI-Anfragen pro Tag ist gedeckelt. Ist das
+                  Kontingent aufgebraucht, antwortet das Demo-Regelwerk —
+                  das wird in der Unterhaltung ehrlich gekennzeichnet.
+                </li>
+                <li>
+                  <span className="font-medium">Admin-Schutz:</span> Das
+                  Zurücksetzen der Demo erfordert einen serverseitigen
+                  Admin-Schlüssel. Sicherheitsrelevante Ereignisse
+                  (z.&nbsp;B. fehlgeschlagene Admin-Versuche) werden in einem
+                  unveränderlichen Audit-Protokoll festgehalten.
+                </li>
+              </ul>
+            </div>
+          </section>
         </>
       )}
     </div>

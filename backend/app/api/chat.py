@@ -6,13 +6,20 @@ conversation + messages + workflow events.
 
 Response contract (JSON):
   {conversation_id, intent, confidence, order_ref, reply_de, answer,
-   order, timeline, events, ticket_id, ticket, provider, escalated}
+   order, timeline, events, ticket_id, ticket, provider, escalated,
+   quota_fallback, quota_note}
 ``answer``/``events``/``ticket`` are the canonical names; ``reply_de``,
 ``timeline``, ``ticket_id`` stay for backward compatibility.
 
 Never invents order/product data; unknown references → German
 clarification or human escalation. Provider failures surface as
 ``ai_provider_unavailable`` with an honest German fallback reply.
+
+Phase 7: real-provider calls are wrapped in a daily quota guard
+(``LLM_DAILY_REQUEST_CAP``). When the cap is exhausted the request is
+retried with the deterministic mock provider; the response carries
+``quota_fallback: true`` and an honest German note instead of failing.
+Validation errors return 400 with German messages.
 """
 
 from __future__ import annotations
@@ -22,7 +29,12 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from ..ai.providers import LLMError, get_provider
+from ..ai.providers import LLMError, MockLLMProvider, get_provider
+from ..ai.quota import (
+    QUOTA_FALLBACK_NOTE_DE,
+    check_and_consume_quota,
+    is_real_provider,
+)
 from ..config import Settings
 from ..db.repositories import EventRepository
 from ..services.pipeline import (
@@ -37,10 +49,10 @@ from .deps import get_db, get_settings
 router = APIRouter()
 
 
-def _result_to_response(result) -> dict:
+def _result_to_response(result, quota_fallback: bool = False) -> dict:
     timeline = result.timeline
     ticket = {"id": result.ticket_id} if result.ticket_id is not None else None
-    return {
+    response = {
         "conversation_id": result.conversation_id,
         "intent": result.intent,
         "confidence": result.confidence,
@@ -55,6 +67,14 @@ def _result_to_response(result) -> dict:
         "provider": result.provider,
         "escalated": result.escalated,
     }
+    if quota_fallback:
+        response["quota_fallback"] = True
+        response["quota_note"] = QUOTA_FALLBACK_NOTE_DE
+    return response
+
+
+def _client_ip(request: Request) -> str | None:
+    return request.client.host if request.client else None
 
 
 @router.post("/chat")
@@ -75,10 +95,12 @@ async def chat(
         payload = None
     ok, error = validate_message_payload(payload, settings)
     if not ok:
-        raise HTTPException(status_code=422, detail=error)
+        # Phase 7: German, customer-facing validation errors (400).
+        raise HTTPException(status_code=400, detail=error)
 
     message: str = payload["message"].strip()
     store_id: str = payload.get("store_id") or DEMO_STORE_ID
+    actor_ip = _client_ip(request)
 
     try:
         provider = get_provider(settings)
@@ -95,8 +117,24 @@ async def chat(
             },
         )
 
+    quota_fallback = False
+    if is_real_provider(provider):
+        if check_and_consume_quota(
+            db, settings.llm_provider, settings.llm_daily_request_cap
+        ):
+            pass  # quota available: proceed with the real provider
+        else:
+            provider = MockLLMProvider()
+            quota_fallback = True
+
     try:
-        result = run_pipeline(message, store_id, db, provider, settings)
+        result = run_pipeline(
+            message, store_id, db, provider, settings,
+            actor_ip=actor_ip, quota_fallback=quota_fallback,
+        )
+        if quota_fallback:
+            # The answer came from the mock, not the configured provider.
+            result.provider = "mock"
     except LLMError:
         # Log the failure as a real event, then answer honestly.
         convo = db.execute(
@@ -132,4 +170,4 @@ async def chat(
             },
         )
 
-    return _result_to_response(result)
+    return _result_to_response(result, quota_fallback=quota_fallback)
