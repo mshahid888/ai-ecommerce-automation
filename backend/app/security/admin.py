@@ -91,5 +91,5 @@ async def require_admin(
         pass
     raise HTTPException(
         status_code=401,
-        detail="Admin-Schlüssel fehlt oder ist ungültig.",
+        detail="Admin key missing or invalid.",
     )

@@ -7,8 +7,8 @@ function badgeClass(status: string): string {
 }
 
 function badgeLabel(status: string): string {
-  if (status === "failed") return "fehlgeschlagen";
-  if (status === "done") return "abgeschlossen";
+  if (status === "failed") return "failed";
+  if (status === "done") return "done";
   return status;
 }
 
@@ -21,14 +21,13 @@ export default function Timeline({ steps }: TimelineProps) {
   if (steps.length === 0) {
     return (
       <p className="text-sm text-slate-500">
-        Noch keine Schritte aufgezeichnet. Stellen Sie eine Frage im Chat, um
-        den Ablauf zu sehen.
+        No steps recorded yet. Ask a question in the chat to see the workflow.
       </p>
     );
   }
 
   return (
-    <ol className="space-y-3" aria-label="Workflow-Schritte">
+    <ol className="space-y-3" aria-label="Workflow steps">
       {steps.map((step, index) => (
         <li
           key={`${step.key}-${index}`}

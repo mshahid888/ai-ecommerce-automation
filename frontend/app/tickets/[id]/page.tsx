@@ -15,7 +15,7 @@ export default async function TicketDetailPage({
     <Suspense
       fallback={
         <p role="status" className="text-sm text-slate-600">
-          Ticket wird geladen …
+          Loading ticket …
         </p>
       }
     >

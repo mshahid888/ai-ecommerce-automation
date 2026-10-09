@@ -48,7 +48,10 @@ from ..rules.escalation import (
     decide_escalation,
 )
 from ..rules.order_rules import normalize_order_ref
-from ..rules.return_policy import evaluate_return_eligibility
+from ..rules.return_policy import (
+    RETURN_REASON_DISPLAY,
+    evaluate_return_eligibility,
+)
 from .classification import Classification, validate_classification
 from .intent import Intent
 
@@ -71,30 +74,30 @@ EVENT_STORE_INFO = "store_info"
 EVENT_STORE_BACKEND_ERROR = "store_backend_error"
 
 _EVENT_LABELS = {
-    EVENT_MESSAGE_RECEIVED: "Anfrage empfangen",
-    EVENT_INTENT_CLASSIFIED: "Anliegen erkannt",
-    EVENT_ORDER_REF_EXTRACTED: "Bestellnummer extrahiert",
-    EVENT_ORDER_LOOKUP: "Demo-Bestellung geprüft",
-    EVENT_PRODUCT_SEARCH: "Produktkatalog durchsucht",
-    EVENT_POLICY_CHECK: "Retourenrichtlinie geprüft",
-    EVENT_RETURN_REQUEST_CREATED: "Retourenantrag erstellt",
-    EVENT_TICKET_CREATED: "Support-Ticket erstellt",
-    EVENT_ESCALATED: "An Mitarbeiter eskaliert",
-    EVENT_RULES_APPLIED: "Geschäftsregeln angewendet",
-    EVENT_RESPONSE_GENERATED: "Antwort erstellt",
-    EVENT_INTERACTION_LOGGED: "Supportvorgang protokolliert",
-    EVENT_STORE_INFO: "Shop-Informationen abgerufen",
-    EVENT_STORE_BACKEND_ERROR: "Shop-Anbindung fehlgeschlagen",
+    EVENT_MESSAGE_RECEIVED: "Message received",
+    EVENT_INTENT_CLASSIFIED: "Intent detected",
+    EVENT_ORDER_REF_EXTRACTED: "Order number extracted",
+    EVENT_ORDER_LOOKUP: "Demo order checked",
+    EVENT_PRODUCT_SEARCH: "Product catalog searched",
+    EVENT_POLICY_CHECK: "Return policy checked",
+    EVENT_RETURN_REQUEST_CREATED: "Return request created",
+    EVENT_TICKET_CREATED: "Support ticket created",
+    EVENT_ESCALATED: "Escalated to staff",
+    EVENT_RULES_APPLIED: "Business rules applied",
+    EVENT_RESPONSE_GENERATED: "Response generated",
+    EVENT_INTERACTION_LOGGED: "Support interaction logged",
+    EVENT_STORE_INFO: "Store information retrieved",
+    EVENT_STORE_BACKEND_ERROR: "Store connection failed",
     EVENT_LLM_QUOTA_FALLBACK: EVENT_LLM_QUOTA_FALLBACK_LABEL,
 }
 
-_DEMO_DISCLAIMER = "Hinweis: Demo-Umgebung — alle Daten sind simuliert."
+_DEMO_DISCLAIMER = "Demo environment—all data is simulated."
 
 _STATUS_DE = {
-    "shipped": "versendet",
-    "processing": "in Bearbeitung",
-    "delivered": "zugestellt",
-    "delayed": "verzögert",
+    "shipped": "shipped",
+    "processing": "processing",
+    "delivered": "delivered",
+    "delayed": "delayed",
 }
 
 
@@ -112,21 +115,27 @@ class PipelineResult:
     escalated: bool = False
 
 
+_MONTHS_EN = (
+    "January", "February", "March", "April", "May", "June", "July",
+    "August", "September", "October", "November", "December",
+)
+
+
 def _de_date(iso: str | None) -> str | None:
-    """'2026-10-14' → '14.10.2026' (None-safe)."""
+    """'2026-10-14' → '14 October 2026' (None-safe)."""
     if not iso:
         return None
     try:
         year, month, day = str(iso)[:10].split("-")
-        return f"{int(day):02d}.{int(month):02d}.{year}"
-    except ValueError:
+        return f"{int(day)} {_MONTHS_EN[int(month) - 1]} {year}"
+    except (ValueError, IndexError):
         return None
 
 
 def _format_eur(cents: int | None, currency: str | None = "EUR") -> str:
     if cents is None:
         return ""
-    return f"{cents / 100:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"€{cents / 100:,.2f}"
 
 
 def _minimal_order(order: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -248,8 +257,8 @@ class _Pipeline:
     def handle_order_status(self, order_ref: str | None) -> str:
         if not order_ref:
             return (
-                "Um den Bestellstatus zu prüfen, benötige ich Ihre "
-                "Bestellnummer — zum Beispiel #10482. "
+                "To check your order status, I need your order number — "
+                "for example #10482. "
                 f"{_DEMO_DISCLAIMER}"
             )
         self.log(EVENT_ORDER_REF_EXTRACTED, {"order_ref": order_ref})
@@ -260,45 +269,59 @@ class _Pipeline:
         })
         if order is None:
             return (
-                f"Die Bestellung #{order_ref} wurde nicht gefunden. "
-                "Bitte prüfen Sie die Nummer — oder soll sich ein "
-                "Mitarbeiter bei Ihnen melden? "
+                f"Order #{order_ref} was not found. "
+                "Please check the number — or would you like a team member "
+                "to get in touch? "
                 f"{_DEMO_DISCLAIMER}"
             )
 
         self.order = order
         status = order.get("status") or ""
-        status_de = _STATUS_DE.get(status, status)
         self.log(EVENT_RULES_APPLIED, {"status": status})
 
-        parts = [
-            f"Ihre Bestellung #{order['order_ref']} ist {status_de}."
-        ]
-        if order.get("carrier"):
-            parts.append(f"Versandpartner: {order['carrier']}.")
+        parts = []
+        if status == "shipped" and order.get("carrier"):
+            parts.append(
+                f"Your order #{order['order_ref']} has been shipped via "
+                f"{order['carrier']}."
+            )
+        elif status == "shipped":
+            parts.append(f"Your order #{order['order_ref']} has been shipped.")
+        elif status == "processing":
+            parts.append(
+                f"Your order #{order['order_ref']} is being processed."
+            )
+        elif status == "delivered":
+            parts.append(f"Your order #{order['order_ref']} was delivered.")
+        elif status == "delayed":
+            parts.append(
+                f"Your order #{order['order_ref']} is currently delayed."
+            )
+        else:
+            parts.append(f"Your order #{order['order_ref']}: {status}.")
         if order.get("tracking_ref"):
             parts.append(
-                f"Sendungsnummer: {order['tracking_ref']} (Demo-Referenz, "
-                "keine Live-Sendungsverfolgung)."
+                f"Tracking reference: {order['tracking_ref']} (simulated "
+                "reference; live tracking is unavailable)."
             )
-        eta_de = _de_date(order.get("eta_date"))
-        if status == "delivered" and eta_de:
-            parts.append(f"Zugestellt am {eta_de}.")
-        elif eta_de:
-            parts.append(f"Voraussichtliche Zustellung: {eta_de}.")
+        eta_en = _de_date(order.get("eta_date"))
+        if status == "delivered" and eta_en:
+            parts.append(f"Delivered on {eta_en}.")
+        elif eta_en:
+            parts.append(f"Estimated delivery: {eta_en}.")
         if order.get("total_cents"):
             parts.append(
-                f"Bestellwert: {_format_eur(order['total_cents'], order.get('currency'))}."
+                f"Order total: {_format_eur(order['total_cents'], order.get('currency'))}."
             )
         if status == "delayed":
             parts.append(
-                "Die Lieferung verzögert sich leider. Soll ein Mitarbeiter "
-                "den Fall prüfen?"
+                "Unfortunately, delivery is delayed. Would you like a team "
+                "member to look into this?"
             )
         if status == "delivered":
             parts.append(
-                "Innerhalb von 30 Tagen können Sie die Bestellung "
-                "zurückgeben — sagen Sie einfach „Retoure anmelden“."
+                "You can return this order within 30 days — just say "
+                '"start a return".'
             )
         parts.append(_DEMO_DISCLAIMER)
         return " ".join(parts)
@@ -311,8 +334,8 @@ class _Pipeline:
         product = matches[0] if matches else None
         if product is None:
             return (
-                "Zu welchem Produkt möchten Sie etwas wissen? Nennen Sie mir "
-                "zum Beispiel die Trinkflasche „AquaPure 750“. "
+                "Which product would you like to know about? For example, "
+                'the water bottle "AquaPure 750". '
                 f"{_DEMO_DISCLAIMER}"
             )
 
@@ -327,10 +350,10 @@ class _Pipeline:
                 product_rules.attribute_label(k) for k in missing
             )
             return (
-                f"Zu „{labels}“ liegen mir im Produktkatalog des Demo-Shops "
-                f"leider keine Informationen für {name} vor — ich erfinde "
-                "keine Angaben. Soll ich Ihre Frage an einen Mitarbeiter "
-                "weitergeben? "
+                f"I don't have any information on \"{labels}\" in the demo "
+                f"shop's product catalog for {name} — I don't invent "
+                "specifications. Should I forward your question to a team "
+                "member? "
                 f"{_DEMO_DISCLAIMER}"
             )
 
@@ -342,14 +365,14 @@ class _Pipeline:
             ]
             if missing:
                 answers.append(
-                    "Zu "
+                    "I don't have any information on "
                     + ", ".join(product_rules.attribute_label(k) for k in missing)
-                    + " liegen mir leider keine Informationen vor"
+                    + ", unfortunately"
                 )
-            prefix = "Ja" if known[0][1] is True else "Laut Produktkatalog"
+            prefix = "Yes" if known[0][1] is True else "According to the product catalog"
             return (
                 f"{prefix}, {name} — {'; '.join(answers)}. "
-                f"(Angaben aus dem Produktkatalog des Demo-Shops.) "
+                f"(Details from the demo shop's product catalog.) "
                 f"{_DEMO_DISCLAIMER}"
             )
 
@@ -358,19 +381,18 @@ class _Pipeline:
             product_rules.attribute_label(k) for k in attrs
         )
         return (
-            f"{name}: {product.get('description') or 'Keine Beschreibung verfügbar.'} "
-            f"Verfügbare Angaben: {available}. "
-            f"(Angaben aus dem Produktkatalog des Demo-Shops.) "
+            f"{name}: {product.get('description') or 'No description available.'} "
+            f"Available details: {available}. "
+            f"(Details from the demo shop's product catalog.) "
             f"{_DEMO_DISCLAIMER}"
         )
 
     def handle_greeting(self) -> str:
         # A plain greeting: friendly answer, no ticket, no escalation.
         return (
-            "Hallo und herzlich willkommen beim Demo-Shop „Muster-Shop "
-            "GmbH“! Wie kann ich Ihnen helfen? Sie können mich zum Beispiel "
-            "nach dem Status Ihrer Bestellung fragen, nach Versandkosten "
-            "oder nach unseren Zahlungsarten. "
+            "Hello and welcome to the demo shop \"Demo Shop GmbH\"! How can "
+            "I help you? You can ask me, for example, about the status of "
+            "your order, shipping costs, or our payment methods. "
             f"{_DEMO_DISCLAIMER}"
         )
 
@@ -379,9 +401,9 @@ class _Pipeline:
         self.log(EVENT_STORE_INFO, {"policy_key": "shipping"})
         if not policy:
             return (
-                "Zu den Versandkosten liegen mir in dieser Demo leider keine "
-                "Informationen vor — ich erfinde keine Angaben. Soll ich "
-                "Ihre Frage an einen Mitarbeiter weitergeben? "
+                "Unfortunately, I don't have any shipping cost information "
+                "in this demo — I don't invent details. Should I forward "
+                "your question to a team member? "
                 f"{_DEMO_DISCLAIMER}"
             )
         self.log(EVENT_RULES_APPLIED, {"policy_key": "shipping"})
@@ -390,18 +412,18 @@ class _Pipeline:
         frei_ab = policy.get("versandkostenfrei_ab_eur")
         if kosten is not None:
             parts.append(
-                f"Versandkosten: {_format_eur(int(round(kosten * 100)))}"
+                f"Shipping: {_format_eur(int(round(kosten * 100)))}"
             )
         if frei_ab is not None:
             parts.append(
-                f"versandkostenfrei ab {_format_eur(int(round(frei_ab * 100)))}"
+                f"free shipping from {_format_eur(int(round(frei_ab * 100)))}"
             )
         lieferzeit = policy.get("lieferzeit_werktage")
         if lieferzeit:
-            parts.append(f"Lieferzeit: {lieferzeit} Werktage")
+            parts.append(f"Delivery time: {lieferzeit} business days")
         partner = policy.get("versandpartner") or []
         if partner:
-            parts.append(f"Versandpartner: {', '.join(partner)}")
+            parts.append(f"Carriers: {', '.join(partner)}")
         tracking = policy.get("tracking_hinweis")
         if tracking:
             parts.append(tracking)
@@ -413,16 +435,16 @@ class _Pipeline:
         self.log(EVENT_STORE_INFO, {"policy_key": "payments"})
         if not policy:
             return (
-                "Zu den Zahlungsarten liegen mir in dieser Demo leider keine "
-                "Informationen vor — ich erfinde keine Angaben. Soll ich "
-                "Ihre Frage an einen Mitarbeiter weitergeben? "
+                "Unfortunately, I don't have any payment method information "
+                "in this demo — I don't invent details. Should I forward "
+                "your question to a team member? "
                 f"{_DEMO_DISCLAIMER}"
             )
         self.log(EVENT_RULES_APPLIED, {"policy_key": "payments"})
         arten = policy.get("zahlungsarten") or []
         hinweis = policy.get("hinweis") or ""
         return (
-            "Wir akzeptieren folgende Zahlungsarten: "
+            "We accept the following payment methods: "
             f"{', '.join(arten)}. {hinweis} "
             f"{_DEMO_DISCLAIMER}"
         )
@@ -433,30 +455,30 @@ class _Pipeline:
         product = matches[0] if matches else None
         if product is None:
             return (
-                "Für welches Produkt möchten Sie den Bestand prüfen? Nennen "
-                "Sie mir zum Beispiel die Trinkflasche „AquaPure 750“. "
+                "Which product would you like to check the stock for? For "
+                'example, the water bottle "AquaPure 750". '
                 f"{_DEMO_DISCLAIMER}"
             )
-        name = product.get("name") or "das Produkt"
+        name = product.get("name") or "the product"
         stock = product_rules.stock_level(product)
         self.log(EVENT_RULES_APPLIED, {"product": name, "stock": stock})
         if stock is None:
             return (
-                f"Zu {name} liegen mir leider keine Bestandsinformationen "
-                "vor — ich erfinde keine Angaben. Soll ich Ihre Frage an "
-                "einen Mitarbeiter weitergeben? "
+                f"Unfortunately, I have no stock information for {name} — "
+                "I don't invent details. Should I forward your question to "
+                "a team member? "
                 f"{_DEMO_DISCLAIMER}"
             )
         if stock > 0:
             return (
-                f"Gute Nachricht: {name} ist derzeit auf Lager "
-                f"(Demo-Bestand: {stock} Stück). "
+                f"Good news: {name} is currently in stock "
+                f"(demo stock: {stock} units). "
                 f"{_DEMO_DISCLAIMER}"
             )
         return (
-            f"{name} ist derzeit leider nicht auf Lager. Soll ich Ihre "
-            "Anfrage an einen Mitarbeiter weitergeben — zum Beispiel für "
-            f"eine Benachrichtigung bei Wiederverfügbarkeit? "
+            f"{name} is currently out of stock, unfortunately. Should I "
+            "forward your request to a team member — for example, to be "
+            "notified when it's available again? "
             f"{_DEMO_DISCLAIMER}"
         )
 
@@ -464,8 +486,8 @@ class _Pipeline:
                               classification: Classification) -> str:
         if not order_ref:
             return (
-                "Gerne nehme ich Ihre Retoure auf. Bitte nennen Sie mir Ihre "
-                "Bestellnummer — zum Beispiel #10482. "
+                "I'd be happy to take your return. Please give me your "
+                "order number — for example #10482. "
                 f"{_DEMO_DISCLAIMER}"
             )
         self.log(EVENT_ORDER_REF_EXTRACTED, {"order_ref": order_ref})
@@ -476,9 +498,9 @@ class _Pipeline:
         })
         if order is None:
             return (
-                f"Die Bestellung #{order_ref} wurde nicht gefunden. "
-                "Bitte prüfen Sie die Nummer — oder soll sich ein "
-                "Mitarbeiter bei Ihnen melden? "
+                f"Order #{order_ref} was not found. "
+                "Please check the number — or would you like a team member "
+                "to get in touch? "
                 f"{_DEMO_DISCLAIMER}"
             )
         self.order = order
@@ -502,9 +524,13 @@ class _Pipeline:
                 (
                     self.store_id,
                     order_ref,
-                    f"Demo-Retourenantrag, {verdict}"
+                    f"Demo return request, {verdict}"
                     + (
-                        f", Grund: {classification.return_reason}"
+                        ", reason: "
+                        + RETURN_REASON_DISPLAY.get(
+                            classification.return_reason or "",
+                            classification.return_reason or "",
+                        )
                         if classification.return_reason
                         else ""
                     ),
@@ -515,60 +541,60 @@ class _Pipeline:
             })
             self.create_ticket(
                 intent, order_ref,
-                summary=f"Retourenantrag Bestellung #{order_ref} "
+                summary=f"Return request for order #{order_ref} "
                         f"({result['details_de'][:120]})",
                 escalation_reason=(
-                    "Retouren-Triage: vorläufige Prüfung abgeschlossen, "
-                    "Freigabe durch Mitarbeiter erforderlich"
+                    "Return triage: preliminary check complete, "
+                    "staff approval required"
                 ),
                 recommended_action=(
-                    "Mitarbeiter prüft Antrag und sendet Rücksendeetikett "
-                    "(Demo — keine echte Retoure)"
+                    "Team member reviews the request and sends the return "
+                    "label (demo — no real return)"
                 ),
             )
             address = policy.get("ruecksendeadresse", "")
             return (
-                f"Ihr Retourenantrag für Bestellung #{order_ref} wurde als "
-                f"Demo-Vorgang angelegt (Ticket #{self.ticket_id}) — es wird "
-                f"keine echte Retoure autorisiert und keine Rückerstattung "
-                f"ausgeführt. {result['details_de']} "
-                f"Nächster Schritt: Ein Mitarbeiter prüft den Antrag und "
-                f"sendet Ihnen das Rücksendeetikett. "
-                f"Rücksendeadresse: {address}. "
+                f"Your return request for order #{order_ref} has been "
+                f"created as a demo case (Ticket #{self.ticket_id}) — no "
+                f"real return is authorized and no refund is issued. "
+                f"{result['details_de']} "
+                f"Next step: a team member will review the request and "
+                f"send you the return label. "
+                f"Return address: {address}. "
                 f"{_DEMO_DISCLAIMER}"
             )
 
         if verdict == "window_expired":
             self.create_ticket(
                 intent, order_ref,
-                summary=f"Retoure abgelehnt (Frist): Bestellung #{order_ref}",
+                summary=f"Return declined (window expired): order #{order_ref}",
                 escalation_reason=(
-                    "Rückgabefrist überschritten — Kulanzentscheidung "
-                    "durch Mitarbeiter"
+                    "Return window expired — goodwill decision "
+                    "by team member"
                 ),
-                recommended_action="Mitarbeiter kontaktiert Kunden",
+                recommended_action="Team member contacts the customer",
             )
             return (
-                f"{result['details_de']} Ich habe den Fall als Ticket "
-                f"#{self.ticket_id} an einen Mitarbeiter weitergegeben, der "
-                f"prüft, ob eine Kulanzlösung möglich ist. "
+                f"{result['details_de']} I've forwarded the case as Ticket "
+                f"#{self.ticket_id} to a team member, who will check whether "
+                f"a goodwill solution is possible. "
                 f"{_DEMO_DISCLAIMER}"
             )
 
         # verdict "unclear" / "order_missing" → human review.
         self.create_ticket(
             intent, order_ref,
-            summary=f"Retoure unklar: Bestellung #{order_ref}",
+            summary=f"Return unclear: order #{order_ref}",
             escalation_reason=(
-                "Automatische Prüfung nicht möglich — manuelle Prüfung"
+                "Automatic check not possible — manual review"
             ),
-            recommended_action="Mitarbeiter prüft Retourenberechtigung",
+            recommended_action="Team member reviews return eligibility",
         )
         self.escalated = True
         return (
-            f"{result['details_de']} Ich habe ein Ticket #{self.ticket_id} "
-            f"erstellt — ein Mitarbeiter wird sich so bald wie möglich bei "
-            f"Ihnen melden. {_DEMO_DISCLAIMER}"
+            f"{result['details_de']} I've created Ticket #{self.ticket_id} "
+            f"— a team member will get back to you as soon as possible. "
+            f"{_DEMO_DISCLAIMER}"
         )
 
     def handle_escalation(self, classification: Classification,
@@ -594,7 +620,7 @@ class _Pipeline:
             intent, order_ref,
             summary=self.message[:200],
             escalation_reason=reason_code,
-            recommended_action="Mitarbeiter antwortet dem Kunden",
+            recommended_action="Team member replies to the customer",
             priority="high" if intent in (
                 Intent.COMPLAINT.value, Intent.ORDER_CANCEL.value
             ) else "normal",
@@ -618,51 +644,50 @@ class _Pipeline:
 
         if reason_code == REASON_LOW_CONFIDENCE:
             return (
-                "Ich bin mir bei Ihrer Anfrage nicht ganz sicher und möchte "
-                "Ihnen keine falsche Auskunft geben. Ich habe ein Ticket "
-                f"#{self.ticket_id} erstellt — ein Mitarbeiter wird sich so "
-                "bald wie möglich bei Ihnen melden. "
+                "I'm not entirely sure about your request and I don't want "
+                "to give you wrong information. I've created Ticket "
+                f"#{self.ticket_id} — a team member will get back to you as "
+                "soon as possible. "
                 f"{_DEMO_DISCLAIMER}"
             )
         if intent == Intent.UNKNOWN.value:
             return (
-                "Ich bin mir nicht sicher, ob ich Ihre Anfrage richtig "
-                f"verstanden habe. Ich habe ein Ticket #{self.ticket_id} "
-                "erstellt — ein Mitarbeiter wird sich so bald wie möglich "
-                f"bei Ihnen melden. {_DEMO_DISCLAIMER}"
+                "I'm not sure I understood your request correctly. I've "
+                f"created Ticket #{self.ticket_id} — a team member will get "
+                "back to you as soon as possible. "
+                f"{_DEMO_DISCLAIMER}"
             )
         if intent == Intent.COMPLAINT.value:
             return (
-                "Das tut mir leid zu hören. Ich habe Ihr Anliegen mit hoher "
-                f"Priorität an unser Team weitergegeben (Ticket "
-                f"#{self.ticket_id}). Ein Mitarbeiter wird sich so bald wie "
-                "möglich bei Ihnen melden — wir versprechen nichts, was wir "
-                f"nicht geprüft haben. {_DEMO_DISCLAIMER}"
+                "I'm sorry to hear that. I've forwarded your concern to our "
+                "team with high priority "
+                f"(Ticket #{self.ticket_id}). A team member will get back "
+                "to you as soon as possible — we promise nothing we haven't "
+                f"verified. {_DEMO_DISCLAIMER}"
             )
         if intent == Intent.ORDER_CANCEL.value:
             parts = [
-                "Verstanden — eine Stornierung muss von einem Mitarbeiter "
-                "bestätigt werden, vor allem wenn die Bestellung bereits "
-                "versendet ist.",
+                "Understood — a cancellation must be confirmed by a team "
+                "member, especially if the order has already shipped.",
             ]
             if self.order is not None:
                 status_de = _STATUS_DE.get(
                     self.order.get("status"), self.order.get("status")
                 )
                 parts.append(
-                    f"Ihre Bestellung #{self.order['order_ref']} ist "
-                    f"derzeit {status_de}."
+                    f"Your order #{self.order['order_ref']} is "
+                    f"currently {status_de}."
                 )
             parts.append(
-                f"Ich habe ein Ticket #{self.ticket_id} erstellt — ein "
-                "Mitarbeiter prüft die Stornierung so bald wie möglich. "
+                f"I've created Ticket #{self.ticket_id} — a team member "
+                "will review the cancellation as soon as possible. "
                 f"{_DEMO_DISCLAIMER}"
             )
             return " ".join(parts)
         return (
-            "Verstanden — ich gebe Ihr Anliegen an unser Team weiter "
-            f"(Ticket #{self.ticket_id}). Ein Mitarbeiter wird sich so bald "
-            f"wie möglich bei Ihnen melden. {_DEMO_DISCLAIMER}"
+            "Understood — I'll forward your request to our team "
+            f"(Ticket #{self.ticket_id}). A team member will get back to "
+            f"you as soon as possible. {_DEMO_DISCLAIMER}"
         )
 
 
@@ -779,9 +804,9 @@ def run_pipeline(
             "error": f"{type(exc).__name__}: {str(exc)[:200]}",
         }, status="failed")
         reply = (
-            "Die Anbindung an den Shop ist derzeit gestört — ich kann gerade "
-            "keine Bestell- oder Produktdaten abrufen. Bitte versuchen Sie "
-            "es später erneut oder wenden Sie sich an unser Team. "
+            "The connection to the shop is currently disrupted — I can't "
+            "retrieve order or product data right now. Please try again "
+            "later or contact our team. "
             f"{_DEMO_DISCLAIMER}"
         )
 

@@ -87,18 +87,18 @@ def _ticket_for(db_path, conversation_id: int) -> dict:
         conn.close()
 
 
-# --- 1. new intent routing (mock, German, grounded in seed data) ----------
+# --- 1. new intent routing (mock, English, grounded in seed data) ----------
 
 
 def test_greeting_no_ticket(isolated_client):
     client, _ = isolated_client
-    body = _chat(client, "Hallo")
+    body = _chat(client, "Hello")
     assert body["intent"] == "greeting"
     assert body["confidence"] >= 0.6
     assert not body["escalated"]
     assert body["ticket_id"] is None
-    assert "Muster-Shop" in body["answer"]
-    assert "Wie kann ich Ihnen helfen" in body["answer"]
+    assert "Demo Shop" in body["answer"]
+    assert "How can I help you" in body["answer"]
     assert _event_keys(body) == [
         "message_received",
         "intent_classified",
@@ -109,16 +109,16 @@ def test_greeting_no_ticket(isolated_client):
 
 def test_greeting_does_not_shadow_order_status(isolated_client):
     client, _ = isolated_client
-    body = _chat(client, "Hallo, wo bleibt meine Bestellung #10482?")
+    body = _chat(client, "Hello, where is my order #10482?")
     assert body["intent"] == "order_status"
 
 
 def test_shipping_info_grounded_in_policy(isolated_client):
     client, _ = isolated_client
-    body = _chat(client, "Wie hoch sind die Versandkosten?")
+    body = _chat(client, "What are the shipping costs?")
     assert body["intent"] == "shipping_info"
-    assert "4,99" in body["answer"] and "50,00" in body["answer"]
-    assert "2-4 Werktage" in body["answer"]
+    assert "4.99" in body["answer"] and "50.00" in body["answer"]
+    assert "2-4 business days" in body["answer"]
     assert "DHL" in body["answer"]
     assert "store_info" in _event_keys(body)
     assert not body["escalated"]
@@ -126,47 +126,47 @@ def test_shipping_info_grounded_in_policy(isolated_client):
 
 def test_payment_question_grounded_in_policy(isolated_client):
     client, _ = isolated_client
-    body = _chat(client, "Kann ich mit PayPal zahlen?")
+    body = _chat(client, "Can I pay with PayPal?")
     assert body["intent"] == "payment_question"
     assert "PayPal" in body["answer"]
-    assert "Kauf auf Rechnung" in body["answer"]
-    assert "keine echten Zahlungen" in body["answer"]
+    assert "Purchase on account" in body["answer"]
+    assert "no real payments" in body["answer"]
     assert not body["escalated"]
 
 
 def test_product_availability_in_stock(isolated_client):
     client, _ = isolated_client
-    body = _chat(client, "Ist die AquaPure 750 noch auf Lager?")
+    body = _chat(client, "Is the AquaPure 750 still in stock?")
     assert body["intent"] == "product_availability"
-    assert "auf Lager" in body["answer"]
-    assert "42 Stück" in body["answer"]
+    assert "in stock" in body["answer"]
+    assert "42 units" in body["answer"]
     assert "product_search" in _event_keys(body)
 
 
 def test_product_availability_out_of_stock(isolated_client):
     client, _ = isolated_client
-    body = _chat(client, "Ist die Kaffeemühle lieferbar?")
+    body = _chat(client, "Is the manual coffee grinder available?")
     assert body["intent"] == "product_availability"
-    assert "nicht auf Lager" in body["answer"]
+    assert "out of stock" in body["answer"]
     assert not body["escalated"]
 
 
 def test_product_availability_unknown_product_asks(isolated_client):
     client, _ = isolated_client
-    body = _chat(client, "Ist das Einhorn-Fahrrad auf Lager?")
+    body = _chat(client, "Is the unicorn bicycle in stock?")
     assert body["intent"] == "product_availability"
-    assert "Für welches Produkt" in body["answer"]
+    assert "Which product" in body["answer"]
     assert body["ticket_id"] is None
 
 
 def test_order_cancel_escalates_with_ticket(isolated_client):
     client, _db_path = isolated_client
-    body = _chat(client, "Ich möchte meine Bestellung #10482 stornieren.")
+    body = _chat(client, "I want to cancel my order #10482.")
     assert body["intent"] == "order_cancel"
     assert body["escalated"] is True
     assert body["ticket_id"] is not None
-    assert "Stornierung" in body["answer"]
-    assert "Mitarbeiter" in body["answer"]
+    assert "cancellation" in body["answer"]
+    assert "team member" in body["answer"]
     # The order context is looked up deterministically for the ticket.
     assert body["order"] is not None
     assert body["order"]["order_ref"] == "10482"
@@ -176,9 +176,9 @@ def test_order_cancel_escalates_with_ticket(isolated_client):
     assert ticket["intent"] == "order_cancel"
 
 
-def test_widerrufen_routes_to_order_cancel(isolated_client):
+def test_cancel_order_routes_to_order_cancel(isolated_client):
     client, _ = isolated_client
-    body = _chat(client, "Ich möchte meine Bestellung widerrufen.")
+    body = _chat(client, "I want to cancel the order.")
     assert body["intent"] == "order_cancel"
     assert body["escalated"] is True
 
@@ -187,10 +187,10 @@ def test_widerrufen_routes_to_order_cancel(isolated_client):
 
 
 def test_confidence_calibration_more_keywords_higher():
-    single = json.loads(MockLLMProvider().classify("Was kostet der Versand?"))
+    single = json.loads(MockLLMProvider().classify("What does shipping cost?"))
     multi = json.loads(
         MockLLMProvider().classify(
-            "Versandkosten und Lieferzeit — wie lange dauert der Versand?"
+            "Shipping costs and delivery time — how long does shipping take?"
         )
     )
     assert single["intent"] == "shipping_info"
@@ -202,10 +202,10 @@ def test_confidence_calibration_more_keywords_higher():
 def test_low_confidence_escalates_with_ticket(isolated_client, monkeypatch):
     client, db_path = isolated_client
     stub = _valid_stub(intent="order_status", confidence=0.55, order_ref="10482")
-    body = _chat_with(client, stub, "irgendwas Unklares", monkeypatch)
+    body = _chat_with(client, stub, "some unclear input", monkeypatch)
     assert body["escalated"] is True
     assert body["ticket_id"] is not None
-    assert "nicht ganz sicher" in body["answer"]
+    assert "not entirely sure" in body["answer"]
     ticket = _ticket_for(db_path, body["conversation_id"])
     assert ticket["escalation_reason"] == REASON_LOW_CONFIDENCE
 
@@ -213,10 +213,10 @@ def test_low_confidence_escalates_with_ticket(isolated_client, monkeypatch):
 def test_confidence_just_above_threshold_answers(isolated_client, monkeypatch):
     client, _ = isolated_client
     stub = _valid_stub(intent="order_status", confidence=0.61, order_ref="10482")
-    body = _chat_with(client, stub, "Bestellung 10482", monkeypatch)
+    body = _chat_with(client, stub, "Order 10482", monkeypatch)
     assert body["escalated"] is False
     assert body["ticket_id"] is None
-    assert "versendet" in body["answer"]
+    assert "shipped" in body["answer"]
 
 
 # --- 3. ALWAYS_HUMAN policy -----------------------------------------------
@@ -263,7 +263,7 @@ def test_decide_escalation_policy_unit():
 
 def test_invalid_json_falls_back_to_human(isolated_client, monkeypatch):
     client, db_path = isolated_client
-    body = _chat_with(client, StubProvider("this is not json"), "Hallo?", monkeypatch)
+    body = _chat_with(client, StubProvider("this is not json"), "Hello?", monkeypatch)
     assert body["intent"] == "unknown"
     assert body["confidence"] == 0.0
     assert body["escalated"] is True
@@ -275,7 +275,7 @@ def test_invalid_json_falls_back_to_human(isolated_client, monkeypatch):
 def test_bad_intent_falls_back_to_human(isolated_client, monkeypatch):
     client, _ = isolated_client
     stub = _valid_stub(intent="teleport", confidence=0.95)
-    body = _chat_with(client, stub, "Hallo?", monkeypatch)
+    body = _chat_with(client, stub, "Hello?", monkeypatch)
     assert body["intent"] == "unknown"
     assert body["escalated"] is True
 
@@ -284,7 +284,7 @@ def test_bad_confidence_falls_back_to_human(isolated_client, monkeypatch):
     client, _ = isolated_client
     for bad in (1.5, -0.2, "high", True):
         stub = _valid_stub(confidence=bad)
-        body = _chat_with(client, stub, "Hallo?", monkeypatch)
+        body = _chat_with(client, stub, "Hello?", monkeypatch)
         assert body["intent"] == "unknown", bad
         assert body["confidence"] == 0.0, bad
         assert body["escalated"] is True, bad
@@ -293,7 +293,7 @@ def test_bad_confidence_falls_back_to_human(isolated_client, monkeypatch):
 def test_bad_order_ref_falls_back_to_human(isolated_client, monkeypatch):
     client, _ = isolated_client
     stub = _valid_stub(order_ref="abc123")
-    body = _chat_with(client, stub, "Hallo?", monkeypatch)
+    body = _chat_with(client, stub, "Hello?", monkeypatch)
     assert body["intent"] == "unknown"
     assert body["escalated"] is True
 
@@ -303,11 +303,11 @@ def test_provider_outage_returns_honest_error(isolated_client, monkeypatch):
     from app.api import chat as chat_module
 
     monkeypatch.setattr(chat_module, "get_provider", lambda settings: FailingProvider())
-    resp = client.post("/api/chat", json={"message": "Wo ist meine Bestellung?"})
+    resp = client.post("/api/chat", json={"message": "Where is my order?"})
     assert resp.status_code == 502
     body = resp.json()
     assert body["error"] == "ai_provider_unavailable"
-    assert "KI-Dienst" in body["reply_de"]
+    assert "AI service" in body["reply_de"]
 
 
 # --- 5. validated schema unit tests ---------------------------------------
@@ -360,29 +360,29 @@ def test_detect_language_de_en():
 
 
 def test_mock_output_contract_extended():
-    parsed = json.loads(MockLLMProvider().classify("Hallo"))
+    parsed = json.loads(MockLLMProvider().classify("Hello"))
     for key in (
         "intent", "confidence", "order_ref", "product_hint",
         "return_reason", "language", "requires_human", "reason",
     ):
         assert key in parsed, key
-    assert parsed["language"] == "de"
+    assert parsed["language"] == "en"
     parsed = json.loads(
-        MockLLMProvider().classify("Die Trinkflasche ist defekt, ich will sie zurücksenden.")
+        MockLLMProvider().classify("The water bottle is defective, I want to send it back.")
     )
     assert parsed["intent"] == "return_request"
     assert parsed["product_hint"] == "AquaPure 750"
     assert parsed["return_reason"] == "defekt"
 
 
-# --- 6. German edge cases --------------------------------------------------
+# --- 6. edge cases --------------------------------------------------------
 
 
 def test_order_status_without_number_asks(isolated_client):
     client, _ = isolated_client
-    body = _chat(client, "Wo bleibt meine Bestellung?")
+    body = _chat(client, "Where is my order?")
     assert body["intent"] == "order_status"
-    assert "Bestellnummer" in body["answer"]
+    assert "order number" in body["answer"]
     assert body["ticket_id"] is None
     assert not body["escalated"]
 
@@ -396,4 +396,4 @@ def test_mixed_language_complaint_escalates(isolated_client):
     assert body["intent"] == "complaint"
     assert body["escalated"] is True
     assert body["ticket_id"] is not None
-    assert "keine falsche" not in body["answer"]  # no invented promises
+    assert "nothing we haven't verified" in body["answer"]  # no invented promises

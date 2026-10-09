@@ -13,7 +13,7 @@ export default function Nav() {
   const pathname = usePathname();
 
   return (
-    <nav aria-label="Hauptnavigation">
+    <nav aria-label="Primary navigation">
       <ul className="flex items-center gap-1">
         {LINKS.map((link) => {
           const active = pathname === link.href;

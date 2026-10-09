@@ -19,9 +19,9 @@ interface Message {
 }
 
 const EXAMPLE_QUESTIONS = [
-  "Hallo, wo bleibt meine Bestellung #10482?",
-  "Ist diese Trinkflasche spülmaschinengeeignet?",
-  "Ich möchte meine Bestellung zurücksenden.",
+  "Hello, where is my order #10482?",
+  "Is this water bottle dishwasher-safe?",
+  "I would like to return my order.",
   "My package never arrived, and I want my money back immediately.",
 ] as const;
 
@@ -36,7 +36,7 @@ export default function ChatPage() {
     {
       id: 0,
       role: "assistant",
-      text: "Wie kann ich Ihnen helfen?",
+      text: "How can I help you?",
     },
   ]);
   const [input, setInput] = useState("");
@@ -71,7 +71,7 @@ export default function ChatPage() {
       const ticketId = result.ticket?.id ?? result.ticket_id;
       setTicketNotice(
         ticketId != null
-          ? `Support-Ticket #${ticketId} erstellt – ein Mitarbeiter prüft den Fall.`
+          ? `Support ticket #${ticketId} created – an agent will review the case.`
           : null,
       );
       // Phase 7: honest note when the AI quota was exhausted.
@@ -83,7 +83,7 @@ export default function ChatPage() {
         {
           id: makeId(),
           role: "assistant",
-          text: result.answer || result.reply_de || "(Keine Antwort vom Backend erhalten.)",
+          text: result.answer || result.reply_de || "(No reply received from the backend.)",
         },
       ]);
     } catch (error) {
@@ -129,15 +129,15 @@ export default function ChatPage() {
         {
           id: makeId(),
           role: "assistant",
-          text: "Wie kann ich Ihnen helfen?",
+          text: "How can I help you?",
         },
       ]);
-      setResetNotice(`Demo wurde zurückgesetzt (${result.demo_store}).`);
+      setResetNotice(`Demo was reset (${result.demo_store}).`);
     } catch (error) {
       if (error instanceof ApiError) {
-        setResetNotice(`Zurücksetzen fehlgeschlagen: ${error.message}.`);
+        setResetNotice(`Reset failed: ${error.message}.`);
       } else {
-        setResetNotice(`Backend nicht erreichbar (${apiBaseUrl()}).`);
+        setResetNotice(`Backend unavailable (${apiBaseUrl()}).`);
       }
     } finally {
       setResetting(false);
@@ -149,24 +149,24 @@ export default function ChatPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-            Kunden-Chat
+            Customer chat
           </h1>
           <p className="mt-1 text-sm text-slate-600">
-            Stellen Sie eine Frage zu Ihrer Bestellung, einem Produkt oder
-            einer Retoure. Das Backend prüft echte Demo-Daten:
-            Bestellstatus, Produktkatalog und Retourenrichtlinie.
+            Ask a question about your order, a product, or a return. The
+            backend checks real demo data: order status, product catalog,
+            and return policy.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label htmlFor="admin-key" className="sr-only">
-            Admin-Schlüssel
+            Admin key
           </label>
           <input
             id="admin-key"
             type="password"
             value={adminKey}
             onChange={(event) => setAdminKey(event.target.value)}
-            placeholder="Admin-Schlüssel"
+            placeholder="Admin key"
             autoComplete="off"
             className="w-40 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
           />
@@ -176,7 +176,7 @@ export default function ChatPage() {
             disabled={resetting}
             className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {resetting ? "Wird zurückgesetzt …" : "Demo zurücksetzen"}
+            {resetting ? "Resetting…" : "Reset demo"}
           </button>
         </div>
       </div>
@@ -208,7 +208,7 @@ export default function ChatPage() {
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Chat panel */}
         <section
-          aria-label="Support-Chat"
+          aria-label="Support chat"
           className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:col-span-2"
         >
           <div
@@ -233,7 +233,7 @@ export default function ChatPage() {
                   >
                     {message.isErrorReply && (
                       <p className="mb-1 text-xs font-semibold">
-                        Hinweis des Backends
+                        Backend notice
                       </p>
                     )}
                     {message.text}
@@ -248,7 +248,7 @@ export default function ChatPage() {
                   role="status"
                   className="rounded-2xl rounded-bl-md border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-600"
                 >
-                  Anfrage wird bearbeitet …
+                  Processing your request…
                 </div>
               </div>
             )}
@@ -258,12 +258,11 @@ export default function ChatPage() {
                 role="alert"
                 className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800"
               >
-                <p className="font-semibold">Backend nicht erreichbar.</p>
+                <p className="font-semibold">Backend unavailable.</p>
                 <p className="mt-1">
-                  Das Backend antwortet nicht unter{" "}
-                  <span className="font-mono">{apiBaseUrl()}</span>. Bitte
-                  stellen Sie sicher, dass das Backend läuft, und versuchen Sie
-                  es erneut.
+                  The backend is not responding at{" "}
+                  <span className="font-mono">{apiBaseUrl()}</span>. Please
+                  make sure the backend is running and try again.
                 </p>
               </div>
             )}
@@ -276,7 +275,7 @@ export default function ChatPage() {
                 id="example-questions-label"
                 className="mb-2 text-xs font-semibold text-slate-600"
               >
-                Beispielfragen
+                Sample questions
               </p>
               <div
                 aria-labelledby="example-questions-label"
@@ -305,14 +304,14 @@ export default function ChatPage() {
             >
               <div className="flex-1">
                 <label htmlFor="chat-input" className="sr-only">
-                  Ihre Nachricht
+                  Your message
                 </label>
                 <input
                   id="chat-input"
                   type="text"
                   value={input}
                   onChange={(event) => setInput(event.target.value)}
-                  placeholder="Ihre Nachricht …"
+                  placeholder="Type your message…"
                   disabled={loading}
                   autoComplete="off"
                   className="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200 disabled:opacity-60"
@@ -323,7 +322,7 @@ export default function ChatPage() {
                 disabled={loading || input.trim().length === 0}
                 className="shrink-0 rounded-md bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Senden
+                Send
               </button>
             </form>
           </div>
@@ -331,15 +330,15 @@ export default function ChatPage() {
 
         {/* Timeline panel */}
         <aside
-          aria-label="Aktivitätsverlauf"
+          aria-label="Activity history"
           className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6"
         >
           <h2 className="mb-1 text-lg font-semibold tracking-tight text-slate-900">
-            Aktivitätsverlauf
+            Activity history
           </h2>
           <p className="mb-4 text-sm text-slate-600">
-            Die einzelnen Schritte der letzten Anfrage, wie sie das Backend
-            meldet.
+            The individual steps of the last request, as reported by the
+            backend.
           </p>
           <Timeline steps={timeline} />
         </aside>

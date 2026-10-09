@@ -54,10 +54,10 @@ def _seed_traffic(client: TestClient) -> dict:
     """3 chats: order_status + greeting (no tickets), complaint (ticket)."""
     out = {}
     out["order"] = client.post(
-        "/api/chat", json={"message": "Hallo, wo bleibt meine Bestellung #10482?"}
+        "/api/chat", json={"message": "Hello, where is my order #10482?"}
     ).json()
     out["greeting"] = client.post(
-        "/api/chat", json={"message": "Guten Morgen"}
+        "/api/chat", json={"message": "Good morning"}
     ).json()
     out["complaint"] = client.post(
         "/api/chat",
@@ -87,15 +87,16 @@ def test_dashboard_summary_real_counts(isolated_client):
     breakdown = {b["intent"]: b for b in body["intents_breakdown"]}
     assert set(breakdown) == {"order_status", "greeting", "complaint"}
     assert all(b["count"] == 1 for b in breakdown.values())
-    assert breakdown["complaint"]["label_de"] == "Beschwerde"
-    assert breakdown["order_status"]["label_de"] == "Bestellstatus"
-    assert breakdown["greeting"]["label_de"] == "Begrüßung"
+    # Dashboard intent labels are English (via the ops API).
+    assert breakdown["complaint"]["label_de"] == "Complaint"
+    assert breakdown["order_status"]["label_de"] == "Order status"
+    assert breakdown["greeting"]["label_de"] == "Greeting"
 
     events = body["recent_events"]
     assert 0 < len(events) <= 15
     labels = {e["label_de"] for e in events}
-    assert "Anliegen erkannt" in labels
-    assert "Support-Ticket erstellt" in labels
+    assert "Intent detected" in labels
+    assert "Support ticket created" in labels
     assert all(e["created_at"] for e in events)
     # ticket-created event payload references the real ticket id
     assert any(
@@ -114,7 +115,7 @@ def test_ticket_list_and_status_filter(isolated_client):
     t = all_tickets[0]
     assert t["id"] == ticket_id
     assert t["intent"] == "complaint"
-    assert t["intent_label_de"] == "Beschwerde"
+    assert t["intent_label_de"] == "Complaint"
     assert t["status"] == "open"
     assert t["escalation_reason"] == "always_human"
     assert t["created_at"]
@@ -133,7 +134,7 @@ def test_ticket_detail_links_messages_and_events(isolated_client):
     detail = client.get(f"/api/tickets/{ticket_id}").json()
     assert detail["id"] == ticket_id
     assert detail["intent"] == "complaint"
-    assert detail["recommended_action"] == "Mitarbeiter antwortet dem Kunden"
+    assert detail["recommended_action"] == "Team member replies to the customer"
 
     messages = detail["messages"]
     assert len(messages) == 2
@@ -162,7 +163,7 @@ def test_conversations_list_and_detail(isolated_client):
     by_id = {c["id"]: c for c in listing}
     assert by_id[conv_id]["message_count"] == 2
     assert by_id[conv_id]["last_intent"] == "order_status"
-    assert by_id[conv_id]["last_intent_label_de"] == "Bestellstatus"
+    assert by_id[conv_id]["last_intent_label_de"] == "Order status"
     assert all(c["started_at"] for c in listing)
 
     detail = client.get(f"/api/conversations/{conv_id}").json()

@@ -25,22 +25,22 @@ def validate_message_payload(
     Error messages are deliberately generic — they must not leak internals.
     """
     if not isinstance(payload, dict):
-        return False, "Die Anfrage muss ein JSON-Objekt sein."
+        return False, "The request must be a JSON object."
     if "message" not in payload:
-        return False, "Das Feld 'message' ist erforderlich."
+        return False, "The 'message' field is required."
 
     message = payload.get("message")
     if not isinstance(message, str):
-        return False, "Das Feld 'message' muss eine Zeichenkette sein."
+        return False, "The 'message' field must be a string."
     if not message.strip():
         return False, (
-            "Bitte geben Sie eine Nachricht ein — leere Nachrichten "
-            "können nicht verarbeitet werden."
+            "Please enter a message — empty messages "
+            "cannot be processed."
         )
     if len(message) > settings.max_message_length:
         return False, (
-            "Ihre Nachricht ist zu lang "
-            f"(maximal {settings.max_message_length} Zeichen)."
+            "Your message is too long "
+            f"(max {settings.max_message_length} characters)."
         )
 
     customer_id = payload.get("customer_id")
@@ -48,14 +48,14 @@ def validate_message_payload(
         not isinstance(customer_id, str) or len(customer_id) > 64
     ):
         return False, (
-            "Das Feld 'customer_id' muss eine kurze Zeichenkette sein."
+            "The 'customer_id' field must be a short string."
         )
 
     store_id = payload.get("store_id")
     if store_id is not None and (
         not isinstance(store_id, str) or len(store_id) > 64
     ):
-        return False, "Das Feld 'store_id' muss eine kurze Zeichenkette sein."
+        return False, "The 'store_id' field must be a short string."
 
     return True, ""
 

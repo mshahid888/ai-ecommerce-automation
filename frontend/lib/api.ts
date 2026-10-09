@@ -119,7 +119,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       payload?.message ??
       payload?.detail ??
       payload?.error ??
-      `Backend antwortet mit HTTP ${res.status}`;
+      `Backend returned HTTP ${res.status}`;
     throw new ApiError(res.status, message, payload?.reply_de);
   }
 
