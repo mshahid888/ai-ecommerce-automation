@@ -19,16 +19,37 @@ export interface TimelineStep {
   status: string;
 }
 
-/** Successful POST /api/chat response (Phase 1). */
+/** Minimal order fields returned by POST /api/chat (Phase 2). */
+export interface ChatOrder {
+  order_ref: string | null;
+  status: string | null;
+  status_de: string | null;
+  carrier: string | null;
+  tracking_ref: string | null;
+  eta_date: string | null;
+  eta_date_de: string | null;
+  total: string;
+}
+
+/** Successful POST /api/chat response (Phase 2).
+ *
+ * ``answer`` / ``events`` / ``ticket`` are the canonical names; ``reply_de``,
+ * ``timeline`` and ``ticket_id`` are kept for backward compatibility.
+ */
 export interface ChatResponse {
   conversation_id: number;
   intent: string;
   confidence: number;
   order_ref: string | null;
   reply_de: string;
+  answer: string;
+  order: ChatOrder | null;
   timeline: TimelineStep[];
+  events: TimelineStep[];
   ticket_id: number | string | null;
+  ticket: { id: number | string } | null;
   provider: string;
+  escalated: boolean;
 }
 
 /** A ticket row from GET /api/tickets. */

@@ -79,33 +79,58 @@ class MockLLMProvider(LLMProvider):
     Useful for local development, demos, and automated tests: it behaves like
     the real classifier contract (JSON in, JSON out) without needing an API
     key or network access. Never mistake its output for a production model.
+
+    Phase 2: German keyword rules covering the four demo scenarios
+    (order_status, product_question, return_request, human_support). The
+    pipeline validates everything downstream — the mock only suggests an
+    intent; lookups, policy checks, and replies are deterministic code.
     """
 
-    # Checked in order — first matching group wins.
+    # Checked in order — first matching group wins. German keywords come
+    # first inside each group; the English set keeps the predecessor's
+    # contract tests green.
     _RULES: tuple[tuple[str, tuple[str, ...], float], ...] = (
-        ("human_support", ("human", "real person", "agent", "representative",
-                            "someone real", "call me", "talk to",
-                            "mitarbeiter", "mensch"), 0.95),
-        ("return_request", ("refund", "money back", "chargeback",
-                             "give me my money", "rückgabe", "retoure",
-                             "zurückgeben", "umtausch"), 0.92),
-        ("complaint", ("complain", "terrible", "awful", "angry", "furious",
-                        "disappointed", "worst", "rude", "unacceptable",
-                        "horrible", "beschwerde", "unverschämt"), 0.90),
-        ("order_status", ("where is my order", "order status", "track my order",
-                           "tracking", "delivery status", "when will",
-                           "has my order", "order #", "my package",
-                           "bestellung", "lieferstatus", "wo ist meine",
-                           "sendungsverfolgung", "paket"), 0.93),
-        ("product_question", ("how do", "how can", "what is", "do you ship",
-                               "shipping time", "shipping", "delivery",
-                               "how long", "return policy", "payment method",
-                               "opening hours", "where are you located",
-                               "spülmaschine", "material", "volumen",
-                               "frage", "eigenschaft"), 0.85),
+        ("human_support", (
+            "mitarbeiter", "mensch", "support", "kontakt zum team",
+            "human", "real person", "agent", "representative",
+            "someone real", "call me", "talk to",
+        ), 0.95),
+        ("complaint", (
+            "beschwerde", "unverschämt", "ärgerlich", "nie angekommen",
+            "nicht angekommen", "nicht erhalten",
+            "never arrived", "did not arrive", "complain", "terrible",
+            "awful", "angry", "furious",
+            "disappointed", "worst", "rude", "unacceptable",
+            "horrible",
+        ), 0.90),
+        ("return_request", (
+            "zurücksenden", "rücksenden", "retoure", "rückgabe",
+            "zurückgeben", "umtausch", "widerruf", "retourenschein",
+            "refund", "money back", "chargeback", "give me my money",
+        ), 0.92),
+        ("order_status", (
+            "wo bleibt meine bestellung", "bestellstatus", "lieferstatus",
+            "sendungsverfolgung", "wo ist mein", "wo ist meine",
+            "wann kommt", "liefertermin", "paket", "tracking",
+            "bestellung",
+            "where is my order", "order status", "track my order",
+            "tracking", "delivery status", "when will",
+            "has my order", "order #", "my package",
+        ), 0.93),
+        ("product_question", (
+            "spülmaschinengeeignet", "spülmaschine", "material", "volumen",
+            "farbe", "frage zum", "eigenschaft", "ist diese", "ist dieses",
+            "ist dieser", "ist das", "ist der", "ist die",
+            "wie groß", "wie viel", "gibt es",
+            "how do", "how can", "what is", "do you ship",
+            "shipping time", "shipping", "delivery",
+            "how long", "return policy", "payment method",
+            "opening hours", "where are you located",
+        ), 0.85),
     )
 
-    _ORDER_REF_RE = re.compile(r"(?:order\s*#?\s*|bestellung\s*#?\s*|#)(\d{3,6})", re.IGNORECASE)
+    # Order references: optional '#', 4–6 digits (e.g. "#10482", "10482").
+    _ORDER_REF_RE = re.compile(r"#?(\d{4,6})")
 
     def classify(self, message: str) -> str:
         text = message.lower()
@@ -124,9 +149,8 @@ class MockLLMProvider(LLMProvider):
                     "reason": f"[demo rule-based classifier] matched '{intent}' keywords",
                 })
 
-        # Fallback: message contains an order reference but matched no rule —
-        # still treat as an order question.
-        if order_ref and ("order" in text or "bestellung" in text):
+        # Fallback: any bare order reference is treated as an order question.
+        if order_ref:
             return json.dumps({
                 "intent": "order_status",
                 "confidence": 0.70,

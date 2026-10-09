@@ -1,8 +1,18 @@
-"""POST /api/chat — the conversational entry point (Phase 1 skeleton).
+"""POST /api/chat — the conversational entry point (Phase 2).
 
-Honest skeleton: validates, runs the pipeline stub, logs real events.
-Never invents order data; provider failures surface as
-``ai_provider_unavailable`` with a German fallback reply.
+Full pipeline: validate → classify → extract → deterministic lookup/rules →
+German reply grounded only in verified demo data → persist
+conversation + messages + workflow events.
+
+Response contract (JSON):
+  {conversation_id, intent, confidence, order_ref, reply_de, answer,
+   order, timeline, events, ticket_id, ticket, provider, escalated}
+``answer``/``events``/``ticket`` are the canonical names; ``reply_de``,
+``timeline``, ``ticket_id`` stay for backward compatibility.
+
+Never invents order/product data; unknown references → German
+clarification or human escalation. Provider failures surface as
+``ai_provider_unavailable`` with an honest German fallback reply.
 """
 
 from __future__ import annotations
@@ -25,6 +35,26 @@ from ..validators import body_within_cap, validate_message_payload
 from .deps import get_db, get_settings
 
 router = APIRouter()
+
+
+def _result_to_response(result) -> dict:
+    timeline = result.timeline
+    ticket = {"id": result.ticket_id} if result.ticket_id is not None else None
+    return {
+        "conversation_id": result.conversation_id,
+        "intent": result.intent,
+        "confidence": result.confidence,
+        "order_ref": result.order_ref,
+        "reply_de": result.reply_de,
+        "answer": result.reply_de,
+        "order": result.order,
+        "timeline": timeline,
+        "events": timeline,
+        "ticket_id": result.ticket_id,
+        "ticket": ticket,
+        "provider": result.provider,
+        "escalated": result.escalated,
+    }
 
 
 @router.post("/chat")
@@ -52,7 +82,7 @@ async def chat(
 
     try:
         provider = get_provider(settings)
-    except LLMError as exc:
+    except LLMError:
         return JSONResponse(
             status_code=502,
             content={
@@ -102,13 +132,4 @@ async def chat(
             },
         )
 
-    return {
-        "conversation_id": result.conversation_id,
-        "intent": result.intent,
-        "confidence": result.confidence,
-        "order_ref": result.order_ref,
-        "reply_de": result.reply_de,
-        "timeline": result.timeline,
-        "ticket_id": result.ticket_id,
-        "provider": result.provider,
-    }
+    return _result_to_response(result)

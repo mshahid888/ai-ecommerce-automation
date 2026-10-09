@@ -8,6 +8,7 @@ On startup the SQLite schema is created and the demo store is seeded
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from .api import chat, demo, events, tickets
 from .config import settings
@@ -15,6 +16,14 @@ from .db.database import connect, init_db
 from .db.seed import DEMO_STORE_ID, create_demo_store
 
 app = FastAPI(title="ai-ecommerce-automation-backend")
+
+# Phase 2: allow the Next.js dev frontend to call the API directly.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
 
 
 @app.on_event("startup")

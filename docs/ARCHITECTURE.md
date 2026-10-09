@@ -1,4 +1,9 @@
-# Architektur — AI E-Commerce Automation (Phase 1)
+# Architektur — AI E-Commerce Automation (Phasen 1–2)
+
+> **Phase 2 (2026-10-09):** Der Chat-Workflow ist vollständig implementiert
+> (deutsche Mock-Klassifikation, Bestell-Lookup, Produktkatalog,
+> Retouren-Triage, Eskalation). Die unten stehenden Abschnitte markieren,
+> was in Phase 2 real wurde; Stubs sind als solche gekennzeichnet.
 
 ## Schichtenübersicht
 
@@ -21,8 +26,9 @@
 │       │          mock · openai_compatible · gemini           │
 │       │                                                     │
 │  app/rules/      Deterministische Geschäftslogik (KEIN LLM): │
-│       │          escalation (echt) · order_rules (Stub P4) ·  │
-│       │          return_policy (Stub P5)                     │
+│       │          escalation (echt) · order_rules (echt, P2) ·      │
+│       │          return_policy (deterministische Engine, P2) ·    │
+│       │          product_rules (Katalogsuche, P2)                 │
 │       │                                                     │
 │  app/db/         SQLite (stdlib) + Repository-Schicht:       │
 │                  database · schema.sql · repositories · seed  │
@@ -31,18 +37,28 @@
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Pipeline (Phase-1-Skelett, deterministisch)
+## Pipeline (Phase 2 — vollständig, deterministisch)
 
 ```
 Kundennachricht
   → 1. Input-Validierung            (validators.py — Caps, Typen)
-  → 2. Intent-Klassifikation        (ai/providers.py — LLM NUR hier)
-  → 3. Entitäts-Extraktion          (Phase 3: Bestellnummer etc.)
-  → 4. Geschäftsregeln              (rules/ — reines Python, KEIN LLM)
-  → 5. Autorisierter Datenzugriff    (repositories — immer mit store_id)
-  → 6. Aktionsauswahl               (services/pipeline.py)
-  → 7. Antwort-Generierung          (Phase 1: gekennzeichneter Stub)
-  → 8. Output-Validierung           (Phase 3+)
+  → 2. Intent-Klassifikation        (ai/providers.py — LLM NUR hier;
+                                     Mock: deutsche Keyword-Regeln)
+  → 3. Entitäts-Extraktion          (Regex #?\d{4,6} + Normalisierung,
+                                     services/pipeline.py)
+  → 4. Geschäftsregeln              (rules/ — reines Python, KEIN LLM:
+                                     order_rules, product_rules,
+                                     return_policy, escalation)
+  → 5. Autorisierter Datenzugriff    (repositories — immer mit store_id;
+                                     Orders, Produkte, Policies)
+  → 6. Aktionsauswahl               (services/pipeline.py — je Intent:
+                                     order_status / product_question /
+                                     return_request / escalation)
+  → 7. Antwort-Generierung          (deutsche Templates, ausschließlich aus
+                                     verifizierten Demo-Daten; Unbekanntes →
+                                     ehrliche Klärung/Eskalation)
+  → 8. Output-Validierung           (keine erfundenen Daten: Antworten werden
+                                     nur aus DB-Zeilen gebaut)
   → 9. Event-Logging                (workflow_events — nur echte Schritte)
   → UI-Update (Timeline aus echten Events)
 ```
@@ -65,7 +81,9 @@ gibt es einen ehrlichen Fehlerzustand — keinen erfundenen Erfolg.
 | Absicht erkennen | `ai/providers.py` | **ja** (einzige Stelle) |
 | Bestellung nachschlagen | `db/repositories.py` | nein |
 | Eskalieren? | `rules/escalation.py` | nein (Regel: Konfidenz < 0.6 o. Beschwerde/Mensch) |
-| Retourenberechtigung | `rules/return_policy.py` (Phase 5) | nein |
+| Retourenberechtigung | `rules/return_policy.py` | nein (deterministische Engine gegen `store_policies`, vorläufige Prüfung; Freigabe = Mensch) |
+| Produkt suchen / Attribut beantworten | `rules/product_rules.py` | nein (Token-Match über Katalog, Attribute nur aus `attributes_json`) |
+| Antworttext formulieren | `services/pipeline.py` (deutsche Templates aus DB-Daten) | nein (Mock: nur Klassifikation) |
 | Antworttext formulieren | `services/pipeline.py` (Phase 3+: Provider) | ja, aber validiert |
 | Events/Tickets schreiben | `db/repositories.py` | nein |
 
@@ -104,19 +122,23 @@ return_requests · workflow_events · integration_credentials · store_policies`
 - Die Repository-Schicht nimmt `store_id` als Pflichtparameter; jede Abfrage
   filtert danach → **kein Cross-Store-Zugriff möglich** (per Test verifiziert).
 - Demo-Seed (`db/seed.py`): Shop `demo-muster-shop` („Muster-Shop GmbH",
-  `is_demo=1`), 4 Produkte (u.a. Trinkflasche „AquaFlasche 750ml" mit
-  `spuelmaschinengeeignet=true`), 2 fiktive Kunden, Bestellungen #10482
-  (versendet, DHL, fiktive Referenz `DEMO-TRK-0048217`), #10483, #10471,
-  Retouren-Policy-Stub. `POST /api/demo/reset` löscht und seedet **nur**
-  Demo-Zeilen (`is_demo=1`).
+  `is_demo=1`), 4 Produkte (Trinkflasche „AquaPure 750" mit
+  `spuelmaschinengeeignet=true` u.a. Attributen), 2 fiktive Kunden,
+  Bestellungen #10482 (versendet, DHL, fiktive Referenz `DEMO-TRK-10482`),
+  #10483 (in Bearbeitung), #10471 (zugestellt), #10479 (verzögert),
+  2 Policies (`returns`: 30-Tage-Frist, Bedingungen, Ausnahmen,
+  Rücksendeadresse; `shipping`: Kosten, Lieferzeit). Policies sind explizite
+  Konfigurationszeilen — niemals in Prompts hardcodiert.
+  `POST /api/demo/reset` löscht und seedet **nur** Demo-Zeilen (`is_demo=1`).
 
 ## API-Verträge (Phase 1)
 
 - `GET /health` → `{status, service, llm_provider, demo_mode}`
 - `POST /api/chat` `{message, customer_id?, store_id?}` →
-  `{conversation_id, intent, confidence, order_ref, reply_de, timeline[],
-   ticket_id, provider}` · 422 bei ungültigem Payload · 413 bei >64 KiB ·
-  ehrliches Fehler-JSON bei Provider-Ausfall
+  `{conversation_id, intent, confidence, order_ref, answer, order,
+   events[], ticket, provider, escalated}` (+ `reply_de`/`timeline`/
+  `ticket_id` aus Kompatibilitätsgründen) · 422 bei ungültigem Payload ·
+  413 bei >64 KiB · ehrliches Fehler-JSON bei Provider-Ausfall
 - `GET /api/tickets[?store_id]` · `GET /api/tickets/{id}` → 404 wenn fremd/fehlend
 - `GET /api/events[?store_id][&limit]` → neueste zuerst
 - `POST /api/demo/reset` → nur mit `DEMO_MODE=true`, sonst 403

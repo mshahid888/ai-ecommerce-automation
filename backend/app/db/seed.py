@@ -1,8 +1,12 @@
-"""Demo data seeding.
+"""Demo data seeding (Phase 2).
 
 ``create_demo_store`` wipes and re-seeds ONLY rows belonging to the demo
 store (``demo-muster-shop``, ``is_demo=1``). Real (non-demo) rows are never
 touched, so ``POST /api/demo/reset`` is safe against tenant data.
+
+All demo content is fictional and clearly labeled: store "Muster-Shop GmbH",
+tracking references prefixed ``DEMO-TRK-``, fictional customers, fictional
+delivery dates.
 """
 
 from __future__ import annotations
@@ -14,16 +18,18 @@ DEMO_STORE_ID = "demo-muster-shop"
 
 _PRODUCTS = [
     {
-        "sku": "MS-AF750",
-        "name": "AquaFlasche 750ml",
+        "sku": "MS-AP750",
+        "name": "AquaPure 750",
         "description": (
-            "Isolierte Trinkflasche aus Edelstahl, 750 ml, hält 24h kalt / 12h warm."
+            "Trinkflasche aus Edelstahl, 750 ml, doppelwandig isoliert — "
+            "hält Getränke 24 Stunden kalt und 12 Stunden warm."
         ),
         "attributes_json": json.dumps(
             {
                 "spuelmaschinengeeignet": True,
                 "material": "Edelstahl",
                 "volumen_ml": 750,
+                "isolierung": "doppelwandig",
             }
         ),
     },
@@ -31,7 +37,7 @@ _PRODUCTS = [
         "sku": "MS-SB30",
         "name": "Solarbank 30000mAh",
         "description": (
-            "Powerbank mit Solarpanel, 30000 mAh, USB-C Schnellladung."
+            "Powerbank mit Solarpanel, 30000 mAh Kapazität, USB-C Schnellladung."
         ),
         "attributes_json": json.dumps(
             {
@@ -76,16 +82,19 @@ _CUSTOMERS = [
     {"name": "Erika Musterfrau", "email": "erika.musterfrau@example.de"},
 ]
 
+# Fictional orders for the four demo scenarios. created_at is explicit so
+# the deterministic return-policy engine can compute the return window.
 _ORDERS = [
     {
         "order_ref": "10482",
         "customer": "Max Mustermann",
         "status": "shipped",
         "carrier": "DHL",
-        "tracking_ref": "DEMO-TRK-0048217",
+        "tracking_ref": "DEMO-TRK-10482",
         "eta_date": "2026-10-14",
         "total_cents": 3499,
         "currency": "EUR",
+        "created_at": "2026-10-06T09:12:00Z",
     },
     {
         "order_ref": "10483",
@@ -96,24 +105,65 @@ _ORDERS = [
         "eta_date": "2026-10-16",
         "total_cents": 5999,
         "currency": "EUR",
+        "created_at": "2026-10-08T14:03:00Z",
     },
     {
         "order_ref": "10471",
         "customer": "Max Mustermann",
         "status": "delivered",
         "carrier": "DHL",
-        "tracking_ref": "DEMO-TRK-0047110",
+        "tracking_ref": "DEMO-TRK-10471",
         "eta_date": "2026-10-02",
         "total_cents": 1299,
         "currency": "EUR",
+        "created_at": "2026-09-20T11:47:00Z",
+    },
+    {
+        "order_ref": "10479",
+        "customer": "Erika Musterfrau",
+        "status": "delayed",
+        "carrier": "DHL",
+        "tracking_ref": "DEMO-TRK-10479",
+        "eta_date": "2026-10-09",
+        "total_cents": 2499,
+        "currency": "EUR",
+        "created_at": "2026-09-25T16:20:00Z",
     },
 ]
 
-_RETURNS_POLICY = {
-    "widerrufsfrist_tage": 14,
-    "ruecksendeadresse": "Muster-Shop GmbH, Retouren, Musterstraße 1, 37073 Göttingen",
-    "ausnahmen": ["versiegelte Hygieneartikel"],
-    "status": "stub_phase_5",
+# Store policies are explicit configuration rows — never hardcoded in prompts
+# or business logic. The return-policy engine reads these deterministically.
+_POLICIES = {
+    "returns": {
+        "rueckgabefrist_tage": 30,
+        "widerrufsfrist_tage": 14,
+        "bedingungen": [
+            "Ware unbenutzt und in Originalverpackung",
+            "Bestellnummer angeben",
+        ],
+        "ausnahmen": [
+            "versiegelte Hygieneartikel nach Öffnung",
+        ],
+        "ruecksendeadresse": (
+            "Muster-Shop GmbH, Retouren, Musterstraße 1, 37073 Göttingen"
+        ),
+        "hinweis": (
+            "Dies ist eine Demo-Richtlinie. Im Demo-Modus werden keine "
+            "echten Retouren autorisiert und keine Rückerstattungen ausgeführt."
+        ),
+        "status": "active",
+    },
+    "shipping": {
+        "versandkosten_eur": 4.99,
+        "versandkostenfrei_ab_eur": 50.0,
+        "lieferzeit_werktage": "2-4",
+        "versandpartner": ["DHL", "Hermes"],
+        "tracking_hinweis": (
+            "Demo-Umgebung: Sendungsnummern sind fiktiv, "
+            "keine Live-Sendungsverfolgung."
+        ),
+        "status": "active",
+    },
 }
 
 
@@ -172,8 +222,9 @@ def create_demo_store(conn: sqlite3.Connection) -> str:
     for order in _ORDERS:
         conn.execute(
             "INSERT INTO orders (store_id, order_ref, customer_id, status, "
-            "carrier, tracking_ref, eta_date, total_cents, currency, is_demo) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+            "carrier, tracking_ref, eta_date, total_cents, currency, "
+            "created_at, is_demo) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
             (
                 DEMO_STORE_ID,
                 order["order_ref"],
@@ -184,13 +235,15 @@ def create_demo_store(conn: sqlite3.Connection) -> str:
                 order["eta_date"],
                 order["total_cents"],
                 order["currency"],
+                order["created_at"],
             ),
         )
 
-    conn.execute(
-        "INSERT INTO store_policies (store_id, policy_key, policy_json) "
-        "VALUES (?, 'returns', ?)",
-        (DEMO_STORE_ID, json.dumps(_RETURNS_POLICY)),
-    )
+    for policy_key, policy in _POLICIES.items():
+        conn.execute(
+            "INSERT INTO store_policies (store_id, policy_key, policy_json) "
+            "VALUES (?, ?, ?)",
+            (DEMO_STORE_ID, policy_key, json.dumps(policy)),
+        )
     conn.commit()
     return DEMO_STORE_ID

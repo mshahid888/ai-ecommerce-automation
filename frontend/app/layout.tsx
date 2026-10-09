@@ -46,7 +46,8 @@ export default function RootLayout({
 
         <footer className="border-t border-slate-200 bg-white">
           <p className="mx-auto max-w-6xl px-4 py-4 text-xs text-slate-500 sm:px-6">
-            Phase 1 – Demo-Skelett. Alle Daten sind simuliert; es werden keine
+            Phase 2 – Demo mit echten Workflows: Bestellstatus, Produktkatalog
+            und Retouren-Triage. Alle Daten sind simuliert; es werden keine
             echten Bestellungen verarbeitet.
           </p>
         </footer>

@@ -58,16 +58,22 @@ def test_reset_seeds_demo_store(isolated_client):
         assert _count(conn, "stores") == 1
         assert _count(conn, "products") == 4
         assert _count(conn, "customers") == 2
-        assert _count(conn, "orders") == 3
+        assert _count(conn, "orders") == 4
         order = conn.execute(
             "SELECT * FROM orders WHERE order_ref = '10482'"
         ).fetchone()
         assert order["status"] == "shipped"
-        assert order["tracking_ref"] == "DEMO-TRK-0048217"
+        assert order["tracking_ref"] == "DEMO-TRK-10482"
         policies = conn.execute(
             "SELECT * FROM store_policies WHERE store_id = ?", (DEMO_STORE_ID,)
         ).fetchall()
-        assert len(policies) == 1
+        assert len(policies) == 2
+        policy_keys = {row["policy_key"] for row in policies}
+        assert policy_keys == {"returns", "shipping"}
+        delayed = conn.execute(
+            "SELECT * FROM orders WHERE order_ref = '10479'"
+        ).fetchone()
+        assert delayed["status"] == "delayed"
     finally:
         conn.close()
 
@@ -108,7 +114,7 @@ def test_reset_removes_demo_tickets_but_keeps_non_demo(isolated_client):
     try:
         assert _count(conn, "stores", "WHERE id = 'tenant-1'") == 1
         assert _count(conn, "orders", "WHERE store_id = 'tenant-1'") == 1
-        assert _count(conn, "orders") == 4  # 3 demo + 1 tenant
+        assert _count(conn, "orders") == 5  # 4 demo + 1 tenant
     finally:
         conn.close()
 
@@ -136,7 +142,7 @@ def test_reset_is_idempotent(isolated_client):
     try:
         # Exactly one seeded set of demo rows — no duplicates.
         assert _count(conn, "stores", f"WHERE id = '{DEMO_STORE_ID}'") == 1
-        assert _count(conn, "orders", f"WHERE store_id = '{DEMO_STORE_ID}'") == 3
+        assert _count(conn, "orders", f"WHERE store_id = '{DEMO_STORE_ID}'") == 4
         assert _count(conn, "products", f"WHERE store_id = '{DEMO_STORE_ID}'") == 4
     finally:
         conn.close()

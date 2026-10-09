@@ -60,6 +60,15 @@ class Settings:
             db_path = _BACKEND_ROOT / db_path
         self.database_path: Path = db_path
         self.demo_mode: bool = _env_bool("DEMO_MODE", True)
+        raw_origins = _env(
+            "CORS_ORIGINS",
+            "http://localhost:3000,http://127.0.0.1:3000",
+        ) or ""
+        self.cors_origins: list[str] = [
+            origin.strip()
+            for origin in raw_origins.split(",")
+            if origin.strip()
+        ]
         self.rate_limit_placeholder: None = None
 
 

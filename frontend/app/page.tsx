@@ -19,9 +19,10 @@ interface Message {
 }
 
 const EXAMPLE_QUESTIONS = [
-  "Wo bleibt meine Bestellung #10482?",
-  "Ist die Trinkflasche spülmaschinengeeignet?",
-  "Ich möchte eine Bestellung zurücksenden.",
+  "Hallo, wo bleibt meine Bestellung #10482?",
+  "Ist diese Trinkflasche spülmaschinengeeignet?",
+  "Ich möchte meine Bestellung zurücksenden.",
+  "My package never arrived, and I want my money back immediately.",
 ] as const;
 
 let nextId = 1;
@@ -42,6 +43,7 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(false);
   const [backendDown, setBackendDown] = useState(false);
   const [timeline, setTimeline] = useState<TimelineStep[]>([]);
+  const [ticketNotice, setTicketNotice] = useState<string | null>(null);
   const [resetNotice, setResetNotice] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
@@ -61,13 +63,19 @@ export default function ChatPage() {
 
     try {
       const result = await postChat(text);
-      setTimeline(result.timeline ?? []);
+      setTimeline(result.events ?? result.timeline ?? []);
+      const ticketId = result.ticket?.id ?? result.ticket_id;
+      setTicketNotice(
+        ticketId != null
+          ? `Support-Ticket #${ticketId} erstellt – ein Mitarbeiter prüft den Fall.`
+          : null,
+      );
       setMessages((prev) => [
         ...prev,
         {
           id: makeId(),
           role: "assistant",
-          text: result.reply_de || "(Keine Antwort vom Backend erhalten.)",
+          text: result.answer || result.reply_de || "(Keine Antwort vom Backend erhalten.)",
         },
       ]);
     } catch (error) {
@@ -105,6 +113,7 @@ export default function ChatPage() {
     try {
       const result = await resetDemo();
       setTimeline([]);
+      setTicketNotice(null);
       setBackendDown(false);
       setMessages([
         {
@@ -134,8 +143,8 @@ export default function ChatPage() {
           </h1>
           <p className="mt-1 text-sm text-slate-600">
             Stellen Sie eine Frage zu Ihrer Bestellung, einem Produkt oder
-            einer Retoure. Das Backend antwortet mit einer Demo-Antwort
-            (Phase 1 – Stub).
+            einer Retoure. Das Backend prüft echte Demo-Daten:
+            Bestellstatus, Produktkatalog und Retourenrichtlinie.
           </p>
         </div>
         <button
@@ -147,6 +156,15 @@ export default function ChatPage() {
           {resetting ? "Wird zurückgesetzt …" : "Demo zurücksetzen"}
         </button>
       </div>
+
+      {ticketNotice && (
+        <p
+          role="status"
+          className="rounded-lg border border-sky-300 bg-sky-50 px-4 py-2.5 text-sm font-medium text-sky-900"
+        >
+          {ticketNotice}
+        </p>
+      )}
 
       {resetNotice && (
         <p role="status" className="text-sm text-slate-600">
