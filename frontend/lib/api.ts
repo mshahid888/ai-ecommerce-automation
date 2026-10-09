@@ -57,6 +57,7 @@ export interface Ticket {
   id: number;
   conversation_id: number | null;
   intent: string | null;
+  intent_label_de: string | null;
   order_ref: string | null;
   summary: string | null;
   status: string;
@@ -123,8 +124,99 @@ export function postChat(message: string): Promise<ChatResponse> {
   });
 }
 
-export function getTickets(limit = 50): Promise<Ticket[]> {
-  return request<Ticket[]>(`/api/tickets?limit=${limit}`);
+export function getTickets(limit = 50, status?: string): Promise<Ticket[]> {
+  const query = status
+    ? `/api/tickets?limit=${limit}&status=${encodeURIComponent(status)}`
+    : `/api/tickets?limit=${limit}`;
+  return request<Ticket[]>(query);
+}
+
+/** One row of the German intent distribution from GET /api/dashboard/summary. */
+export interface IntentBreakdown {
+  intent: string;
+  label_de: string;
+  count: number;
+}
+
+/** A recent workflow event inside the dashboard summary. */
+export interface SummaryEvent {
+  id: number;
+  event_key: string;
+  label_de: string;
+  status: string;
+  conversation_id: number | null;
+  created_at: string;
+}
+
+/** GET /api/dashboard/summary response. Every number is a real DB count. */
+export interface DashboardSummary {
+  store_id: string;
+  conversations_count: number;
+  messages_count: number;
+  tickets_open: number;
+  tickets_total: number;
+  escalations_count: number;
+  intents_breakdown: IntentBreakdown[];
+  recent_events: SummaryEvent[];
+  demo_data: boolean;
+}
+
+/** One conversation row from GET /api/conversations. */
+export interface Conversation {
+  id: number;
+  started_at: string;
+  message_count: number;
+  last_intent: string | null;
+  last_intent_label_de: string;
+}
+
+/** A single message inside a conversation detail view. */
+export interface ConversationMessage {
+  id: number;
+  role: "user" | "assistant" | "system";
+  content: string;
+  created_at: string;
+}
+
+/** A workflow event in a conversation/event timeline. */
+export interface TimelineEvent {
+  id: number;
+  event_key: string;
+  label_de: string;
+  status: string;
+  created_at: string;
+}
+
+/** GET /api/conversations/{id} response: messages + real event timeline. */
+export interface ConversationDetail {
+  id: number;
+  started_at: string;
+  message_count: number;
+  messages: ConversationMessage[];
+  events: TimelineEvent[];
+}
+
+/** GET /api/tickets/{id} response: ticket + linked conversation + events. */
+export interface TicketDetail extends Ticket {
+  intent_label_de: string;
+  messages: ConversationMessage[];
+  events: TimelineEvent[];
+}
+
+export function getDashboardSummary(): Promise<DashboardSummary> {
+  return request<DashboardSummary>("/api/dashboard/summary");
+}
+
+export function getConversations(limit = 50): Promise<Conversation[]> {
+  return request<Conversation[]>(`/api/conversations?limit=${limit}`);
+}
+
+export function getConversation(id: number): Promise<ConversationDetail> {
+  return request<ConversationDetail>(`/api/conversations/${id}`);
+}
+
+export function getTicket(id: number): Promise<TicketDetail> {
+  return request<TicketDetail>(`/api/tickets/${id}`);
 }
 
 export function getEvents(limit = 20): Promise<WorkflowEvent[]> {

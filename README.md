@@ -41,14 +41,37 @@ Phase 2: Demo-Store + deutschsprachiger Kundensupport-Chat, Ende-zu-Ende verdrah
     Antwort-Bubbles, Ticket-Hinweis bei erstelltem Ticket, Aktivitätsverlauf
     aus den **echten** Backend-Events, Demo-Banner, „Demo zurücksetzen"
     (mobil responsiv, keine Robot-Grafiken)
-  - `/dashboard` — Platzhalter-Operations-Dashboard (Demo-Kennzahlen, echte
-    Ereignisliste ab Backend)
-  - `/tickets` — Ticket-Liste aus dem Backend (mit Empty State)
-- **Tests:** 62 pytest-Tests, alle grün (Health, Provider-Vertrag, Validatoren,
+  - `/dashboard` — Operations-Dashboard mit **echten DB-Kennzahlen**
+    (Unterhaltungen, Nachrichten, Offene Tickets, Eskalationen),
+    Anliegen-Verteilung als ehrliche Balkenliste mit echten Zählern,
+    Aktivitätenliste aus den tatsächlichen Workflow-Events (alle als
+    Demo-Daten gekennzeichnet)
+  - `/tickets` — Ticket-Tabelle (ID, Anliegen, Status, Priorität,
+    Bestellung, Erstellt), klickbar → Ticket-Detailseite mit
+    Zusammenfassung, Eskalationsgrund, empfohlener Aktion, verknüpfter
+    Unterhaltung und Ereignisverlauf
+- **Tests:** 67 pytest-Tests, alle grün (Health, Provider-Vertrag, Validatoren,
   Store-Isolation, Demo-Reset, Chat-Pipeline: alle 4 Szenarien + Reset,
   Phase 3: 11 Intents, Konfidenz-Kalibrierung, Eskalations-Policy,
   strikte Klassifikations-Validierung inkl. Stub-Provider-Fallbacks,
-  deutsche Edge Cases).
+  deutsche Edge Cases, Phase 6: Dashboard-Summary, Ticket-Detail,
+  Unterhaltungen, Store-Isolation der Ops-Endpunkte).
+
+## Phase 6 (verifiziert) — Ops-Dashboard + Ticket-Detail + Event-Timeline
+
+- `GET /api/dashboard/summary` → echte DB-Zähler: Unterhaltungen,
+  Nachrichten, offene/gesamte Tickets, Eskalationen, Anliegen-Verteilung
+  (aus `intent_classified`-Events), neueste 15 Workflow-Events — alles als
+  Demo-Daten gekennzeichnet
+- `GET /api/tickets[?status=open]` + `GET /api/tickets/{id}` →
+  Ticket-Detail mit verknüpften Nachrichten und Ereignisverlauf
+- `GET /api/conversations` + `GET /api/conversations/{id}` →
+  Unterhaltungsliste mit `last_intent` und Nachrichten+Timeline im Detail
+- Frontend: `/dashboard` mit echten Kennzahlen, ehrlicher Anliegen-Verteilung
+  und Aktivitätenliste; `/tickets` mit klickbarer Tabelle und Detailseite
+  (Eskalationsgrund, empfohlene Aktion, Unterhaltung, Timeline);
+  Chat-Seite unverändert
+- Alle Ops-Endpunkte read-only und strikt store-isoliert (per Test verifiziert)
 
 ## Phase 3 (verifiziert) — Klassifikationstiefe + Eskalations-Policy
 

@@ -40,6 +40,33 @@ INTENT_ALIASES = {
 
 VALID_INTENTS = {i.value for i in Intent}
 
+#: German display labels for every intent (Phase 6: ops dashboard).
+#: Deterministic lookup table — no LLM involved, so labels can never be
+#: invented or mistranslated by a model.
+INTENT_LABELS_DE = {
+    Intent.ORDER_STATUS.value: "Bestellstatus",
+    Intent.PRODUCT_QUESTION.value: "Produktfrage",
+    Intent.RETURN_REQUEST.value: "Retourenanfrage",
+    Intent.COMPLAINT.value: "Beschwerde",
+    Intent.HUMAN_SUPPORT.value: "Mitarbeiterwunsch",
+    Intent.UNKNOWN.value: "Unbekannt",
+    Intent.SHIPPING_INFO.value: "Versandinfo",
+    Intent.PAYMENT_QUESTION.value: "Zahlungsfrage",
+    Intent.PRODUCT_AVAILABILITY.value: "Verfügbarkeit",
+    Intent.ORDER_CANCEL.value: "Stornierung",
+    Intent.GREETING.value: "Begrüßung",
+}
+
+
+def intent_label_de(intent: str | None) -> str:
+    """German display label for an intent value; falls back to the raw
+    value when unknown (never invent a label for a new intent — the caller
+    decides what to show)."""
+    if intent in INTENT_LABELS_DE:
+        return INTENT_LABELS_DE[intent]
+    return intent or "Unbekannt"
+
+
 #: Intents that must ALWAYS go to a human, no matter the confidence.
 #: ``human_request`` (the alias form used in some prompts) normalizes to
 #: ``human_support``, so the policy covers both spellings.

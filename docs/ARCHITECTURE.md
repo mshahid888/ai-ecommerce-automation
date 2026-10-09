@@ -1,4 +1,4 @@
-# Architektur — AI E-Commerce Automation (Phasen 1–2)
+# Architektur — AI E-Commerce Automation (Phasen 1–6)
 
 > **Phase 2 (2026-10-09):** Der Chat-Workflow ist vollständig implementiert
 > (deutsche Mock-Klassifikation, Bestell-Lookup, Produktkatalog,
@@ -154,7 +154,7 @@ return_requests · workflow_events · integration_credentials · store_policies`
   Konfigurationszeilen — niemals in Prompts hardcodiert.
   `POST /api/demo/reset` löscht und seedet **nur** Demo-Zeilen (`is_demo=1`).
 
-## API-Verträge (Phase 1)
+## API-Verträge (Phase 6)
 
 - `GET /health` → `{status, service, llm_provider, demo_mode}`
 - `POST /api/chat` `{message, customer_id?, store_id?}` →
@@ -162,9 +162,20 @@ return_requests · workflow_events · integration_credentials · store_policies`
    events[], ticket, provider, escalated}` (+ `reply_de`/`timeline`/
   `ticket_id` aus Kompatibilitätsgründen) · 422 bei ungültigem Payload ·
   413 bei >64 KiB · ehrliches Fehler-JSON bei Provider-Ausfall
-- `GET /api/tickets[?store_id]` · `GET /api/tickets/{id}` → 404 wenn fremd/fehlend
+- `GET /api/tickets[?store_id][&status=open][&limit]` (+ `intent_label_de`) ·
+  `GET /api/tickets/{id}` → Ticket + verknüpfte Nachrichten + Event-Verlauf →
+  404 wenn fremd/fehlend
+- `GET /api/dashboard/summary` → echte DB-Zähler (Unterhaltungen,
+  Nachrichten, offene/gesamte Tickets, Eskalationen), Anliegen-Verteilung
+  aus `intent_classified`-Events, neueste 15 Workflow-Events, `demo_data: true`
+- `GET /api/conversations[?store_id][&limit]` (id, started_at, message_count,
+  last_intent + Label) · `GET /api/conversations/{id}` → Nachrichten +
+  Workflow-Timeline → 404 wenn fremd/fehlend
 - `GET /api/events[?store_id][&limit]` → neueste zuerst
 - `POST /api/demo/reset` → nur mit `DEMO_MODE=true`, sonst 403
+
+Alle Ops-Leseendpunkte sind store-scoped und read-only; Zahlen stammen
+ausschließlich aus der Datenbank (keine erfundenen Kennzahlen).
 
 ## Sicherheitsstand Phase 1 (vollständig erst Phase 7)
 

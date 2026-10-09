@@ -119,10 +119,110 @@ class TicketRepository(BaseRepository):
         ).fetchone()
         return _row_to_dict(row) if row else None
 
-    def list(self, store_id: str, limit: int = 50) -> list[dict[str, Any]]:
+    def list(
+        self,
+        store_id: str,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        if status is not None:
+            return self._query(
+                "tickets",
+                store_id,
+                "AND status = ? ORDER BY id DESC LIMIT ?",
+                (status, limit),
+            )
         return self._query(
             "tickets", store_id, "ORDER BY id DESC LIMIT ?", (limit,)
         )
+
+
+class ConversationRepository(BaseRepository):
+    """Store-scoped conversations with their messages and event timeline.
+
+    Every query verifies the conversation belongs to ``store_id`` first —
+    a conversation from another store is treated as nonexistent.
+    """
+
+    def _belongs_to_store(
+        self, store_id: str, conversation_id: int
+    ) -> bool:
+        row = self.conn.execute(
+            "SELECT 1 FROM conversations WHERE id = ? AND store_id = ?",
+            (conversation_id, store_id),
+        ).fetchone()
+        return row is not None
+
+    def list(
+        self, store_id: str, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        """Recent conversations: id, started_at, message_count,
+        last_intent (from the ``intent_classified`` event payload)."""
+        rows = self.conn.execute(
+            """SELECT c.id, c.created_at,
+                      (SELECT COUNT(*) FROM messages m
+                        WHERE m.conversation_id = c.id) AS message_count,
+                      (SELECT e.payload_json FROM workflow_events e
+                        WHERE e.conversation_id = c.id
+                          AND e.event_key = 'intent_classified'
+                          AND e.status = 'done'
+                        ORDER BY e.id ASC LIMIT 1) AS intent_payload
+               FROM conversations c
+               WHERE c.store_id = ?
+               ORDER BY c.id DESC LIMIT ?""",
+            (store_id, limit),
+        ).fetchall()
+        result = []
+        for row in rows:
+            last_intent = None
+            if row["intent_payload"]:
+                try:
+                    last_intent = json.loads(row["intent_payload"]).get("intent")
+                except (json.JSONDecodeError, AttributeError):
+                    last_intent = None
+            result.append(
+                {
+                    "id": row["id"],
+                    "started_at": row["created_at"],
+                    "message_count": row["message_count"],
+                    "last_intent": last_intent,
+                }
+            )
+        return result
+
+    def get(self, store_id: str, conversation_id: int) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT * FROM conversations WHERE id = ? AND store_id = ?",
+            (conversation_id, store_id),
+        ).fetchone()
+        return _row_to_dict(row) if row else None
+
+    def messages(
+        self, store_id: str, conversation_id: int
+    ) -> list[dict[str, Any]] | None:
+        if not self._belongs_to_store(store_id, conversation_id):
+            return None
+        rows = self.conn.execute(
+            """SELECT id, conversation_id, role, content, created_at
+               FROM messages WHERE conversation_id = ?
+               ORDER BY id ASC""",
+            (conversation_id,),
+        ).fetchall()
+        return [_row_to_dict(r) for r in rows]
+
+    def events(
+        self, store_id: str, conversation_id: int
+    ) -> list[dict[str, Any]] | None:
+        if not self._belongs_to_store(store_id, conversation_id):
+            return None
+        rows = self.conn.execute(
+            """SELECT id, event_key, label_de, status, created_at
+               FROM workflow_events
+               WHERE conversation_id = ? AND store_id = ?
+               ORDER BY id ASC""",
+            (conversation_id, store_id),
+        ).fetchall()
+        return [_row_to_dict(r) for r in rows]
 
 
 class EventRepository(BaseRepository):
