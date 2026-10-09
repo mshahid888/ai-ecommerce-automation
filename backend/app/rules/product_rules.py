@@ -66,6 +66,32 @@ def _tokens(text: str) -> list[str]:
     return [t for t in _TOKEN_RE.findall(text.lower()) if len(t) >= 4]
 
 
+def rank_products(
+    conn: sqlite3.Connection, store_id: str, message: str
+) -> list[dict[str, Any]]:
+    """Return all matching products, best match first.
+
+    Same deterministic token-overlap score as :func:`find_product`;
+    rows with no overlap are excluded. The store adapters use this so
+    the pipeline can pick the first (best) match through the
+    ``StoreIntegration`` interface instead of querying the DB directly.
+    """
+    message_tokens = set(_tokens(message))
+    if not message_tokens:
+        return []
+    rows = conn.execute(
+        "SELECT * FROM products WHERE store_id = ?", (store_id,)
+    ).fetchall()
+    scored: list[tuple[int, sqlite3.Row]] = []
+    for row in rows:
+        haystack = set(_tokens(f"{row['name'] or ''} {row['description'] or ''}"))
+        score = len(message_tokens & haystack)
+        if score > 0:
+            scored.append((score, row))
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    return [dict(row) for _, row in scored]
+
+
 def find_product(
     conn: sqlite3.Connection, store_id: str, message: str
 ) -> dict[str, Any] | None:
@@ -75,20 +101,8 @@ def find_product(
     Returns None when nothing matches — the caller then asks the customer
     which product they mean instead of guessing.
     """
-    message_tokens = set(_tokens(message))
-    if not message_tokens:
-        return None
-    rows = conn.execute(
-        "SELECT * FROM products WHERE store_id = ?", (store_id,)
-    ).fetchall()
-    best: sqlite3.Row | None = None
-    best_score = 0
-    for row in rows:
-        haystack = set(_tokens(f"{row['name'] or ''} {row['description'] or ''}"))
-        score = len(message_tokens & haystack)
-        if score > best_score:
-            best, best_score = row, score
-    return dict(best) if best is not None else None
+    matches = rank_products(conn, store_id, message)
+    return matches[0] if matches else None
 
 
 def product_attributes(product: dict[str, Any]) -> dict[str, Any]:

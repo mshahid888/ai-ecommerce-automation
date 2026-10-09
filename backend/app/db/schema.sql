@@ -144,6 +144,19 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
 
+-- Phase 9: Shopify webhook delivery log for idempotency. Shopify may
+-- deliver the same webhook multiple times; X-Shopify-Webhook-Id is the
+-- primary key so duplicates are acknowledged without reprocessing.
+-- NOT wiped by the demo reset (integration evidence, like the audit log).
+CREATE TABLE IF NOT EXISTS shopify_webhook_events (
+    webhook_id  TEXT PRIMARY KEY,
+    topic       TEXT,
+    shop_domain TEXT,
+    received_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_shopify_webhook_topic ON shopify_webhook_events(topic);
+
 -- Phase 7: daily real-LLM usage counters for the AI spending cap
 -- (LLM_DAILY_REQUEST_CAP). Mock/stub calls are never counted.
 CREATE TABLE IF NOT EXISTS ai_usage (

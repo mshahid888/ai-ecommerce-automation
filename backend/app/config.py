@@ -96,6 +96,32 @@ class Settings:
             db_path = _BACKEND_ROOT / db_path
         self.database_path: Path = db_path
         self.demo_mode: bool = _env_bool("DEMO_MODE", True)
+        # -- Phase 9: store backend selection --------------------------------
+        # "demo" (default) → SQLite demo store via DemoStoreAdapter;
+        # "shopify_simulated" → SAME demo data, Shopify-shaped payloads
+        # via SimulatedShopifyAdapter. Unknown values fall back to "demo".
+        # The real ShopifyAdapter is NOT selectable here: it is only
+        # constructed explicitly when SHOPIFY_* env vars are set.
+        raw_backend = (_env("STORE_BACKEND", "demo") or "demo").strip().lower()
+        self.store_backend: str = (
+            raw_backend
+            if raw_backend in {"demo", "shopify_simulated"}
+            else "demo"
+        )
+        # Shopify (Phase 9 skeleton — SIMULATED until a dev store exists).
+        # Server-side ONLY; never frontend, never committed.
+        self.shopify_shop_domain: str | None = _env(
+            "SHOPIFY_SHOP_DOMAIN", None
+        )
+        self.shopify_admin_api_token: str | None = _env(
+            "SHOPIFY_ADMIN_API_TOKEN", None
+        )
+        self.shopify_api_version: str = (
+            _env("SHOPIFY_API_VERSION", "2026-10") or "2026-10"
+        )
+        self.shopify_webhook_secret: str | None = _env(
+            "SHOPIFY_WEBHOOK_SECRET", None
+        )
         raw_origins = _env(
             "CORS_ORIGINS",
             "http://localhost:3000,http://127.0.0.1:3000",

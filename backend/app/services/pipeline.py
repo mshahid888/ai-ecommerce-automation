@@ -35,6 +35,11 @@ from ..ai.quota import (
 )
 from ..config import Settings
 from ..db.repositories import EventRepository, TicketRepository
+from ..integrations import (
+    IntegrationError,
+    StoreIntegration,
+    get_store_integration,
+)
 from ..rules import product_rules
 from ..security.audit import log_audit
 from ..rules.escalation import (
@@ -42,7 +47,7 @@ from ..rules.escalation import (
     REASON_LOW_CONFIDENCE,
     decide_escalation,
 )
-from ..rules.order_rules import lookup_order, normalize_order_ref
+from ..rules.order_rules import normalize_order_ref
 from ..rules.return_policy import evaluate_return_eligibility
 from .classification import Classification, validate_classification
 from .intent import Intent
@@ -63,6 +68,7 @@ EVENT_RULES_APPLIED = "rules_applied"
 EVENT_RESPONSE_GENERATED = "response_generated"
 EVENT_INTERACTION_LOGGED = "interaction_logged"
 EVENT_STORE_INFO = "store_info"
+EVENT_STORE_BACKEND_ERROR = "store_backend_error"
 
 _EVENT_LABELS = {
     EVENT_MESSAGE_RECEIVED: "Anfrage empfangen",
@@ -78,6 +84,7 @@ _EVENT_LABELS = {
     EVENT_RESPONSE_GENERATED: "Antwort erstellt",
     EVENT_INTERACTION_LOGGED: "Supportvorgang protokolliert",
     EVENT_STORE_INFO: "Shop-Informationen abgerufen",
+    EVENT_STORE_BACKEND_ERROR: "Shop-Anbindung fehlgeschlagen",
     EVENT_LLM_QUOTA_FALLBACK: EVENT_LLM_QUOTA_FALLBACK_LABEL,
 }
 
@@ -162,6 +169,7 @@ class _Pipeline:
         provider: LLMProvider,
         settings: Settings,
         actor_ip: str | None = None,
+        store: StoreIntegration | None = None,
     ) -> None:
         self.message = message
         self.store_id = store_id
@@ -169,6 +177,12 @@ class _Pipeline:
         self.provider = provider
         self.settings = settings
         self.actor_ip = actor_ip
+        # Phase 9: product/order lookups go through the StoreIntegration
+        # interface, never direct DB queries. Falls back to the demo
+        # adapter when not provided (unit-test convenience).
+        self.store: StoreIntegration = store or get_store_integration(
+            settings, conn, store_id
+        )
         self.events = EventRepository(conn)
         self.tickets = TicketRepository(conn)
         self.conversation_id: int = 0
@@ -240,7 +254,7 @@ class _Pipeline:
             )
         self.log(EVENT_ORDER_REF_EXTRACTED, {"order_ref": order_ref})
 
-        order = lookup_order(self.conn, self.store_id, order_ref)
+        order = self.store.get_order(order_ref)
         self.log(EVENT_ORDER_LOOKUP, {
             "order_ref": order_ref, "found": order is not None,
         })
@@ -291,9 +305,10 @@ class _Pipeline:
 
     def handle_product_question(self) -> str:
         self.log(EVENT_PRODUCT_SEARCH, {"query": self.message[:80]})
-        product = product_rules.find_product(
-            self.conn, self.store_id, self.message
-        )
+        # Phase 9: product search goes through the store adapter; the
+        # best match is matches[0] (identical ranking to before).
+        matches = self.store.search_products(self.message)
+        product = matches[0] if matches else None
         if product is None:
             return (
                 "Zu welchem Produkt möchten Sie etwas wissen? Nennen Sie mir "
@@ -414,9 +429,8 @@ class _Pipeline:
 
     def handle_product_availability(self) -> str:
         self.log(EVENT_PRODUCT_SEARCH, {"query": self.message[:80]})
-        product = product_rules.find_product(
-            self.conn, self.store_id, self.message
-        )
+        matches = self.store.search_products(self.message)
+        product = matches[0] if matches else None
         if product is None:
             return (
                 "Für welches Produkt möchten Sie den Bestand prüfen? Nennen "
@@ -456,7 +470,7 @@ class _Pipeline:
             )
         self.log(EVENT_ORDER_REF_EXTRACTED, {"order_ref": order_ref})
 
-        order = lookup_order(self.conn, self.store_id, order_ref)
+        order = self.store.get_order(order_ref)
         self.log(EVENT_ORDER_LOOKUP, {
             "order_ref": order_ref, "found": order is not None,
         })
@@ -569,7 +583,7 @@ class _Pipeline:
         order_ref = normalize_order_ref(classification.order_ref)
         if order_ref:
             self.log(EVENT_ORDER_REF_EXTRACTED, {"order_ref": order_ref})
-            order = lookup_order(self.conn, self.store_id, order_ref)
+            order = self.store.get_order(order_ref)
             self.log(EVENT_ORDER_LOOKUP, {
                 "order_ref": order_ref, "found": order is not None,
             })
@@ -672,9 +686,16 @@ def run_pipeline(
     Raises:
         LLMError: when the AI provider fails. The caller converts this to
             the honest ``ai_provider_unavailable`` response.
+
+    Phase 9: all product/order lookups go through the configured
+    ``StoreIntegration`` backend (``STORE_BACKEND`` env: ``demo`` or
+    ``shopify_simulated``). An ``IntegrationError`` from the backend is
+    caught here and answered honestly — the pipeline never invents data
+    when the store cannot be reached.
     """
+    store = get_store_integration(settings, conn, store_id)
     pipe = _Pipeline(message, store_id, conn, provider, settings,
-                     actor_ip=actor_ip)
+                     actor_ip=actor_ip, store=store)
 
     # --- Step 1: conversation + persist user message ----------------------
     convo = conn.execute(
@@ -726,28 +747,43 @@ def run_pipeline(
     normalized_ref = normalize_order_ref(classification.order_ref)
     intent = classification.intent
 
-    if escalate:
-        # Reason code "low_confidence" when the threshold fired, else
-        # "always_human" / "classifier_requires_human".
-        reply = pipe.handle_escalation(classification, esc_reason or REASON_ALWAYS_HUMAN)
-    elif intent == Intent.GREETING.value:
-        reply = pipe.handle_greeting()
-    elif intent == Intent.SHIPPING_INFO.value:
-        reply = pipe.handle_shipping_info()
-    elif intent == Intent.PAYMENT_QUESTION.value:
-        reply = pipe.handle_payment_question()
-    elif intent == Intent.PRODUCT_AVAILABILITY.value:
-        reply = pipe.handle_product_availability()
-    elif intent == Intent.ORDER_STATUS.value:
-        reply = pipe.handle_order_status(normalized_ref)
-    elif intent == Intent.PRODUCT_QUESTION.value:
-        reply = pipe.handle_product_question()
-    elif intent == Intent.RETURN_REQUEST.value:
-        # Returns always create a structured ticket for staff review —
-        # this IS the human handoff for the return workflow.
-        reply = pipe.handle_return_request(normalized_ref, intent, classification)
-    else:  # defensive: should never happen after validation
-        reply = pipe.handle_escalation(classification, REASON_ALWAYS_HUMAN)
+    try:
+        if escalate:
+            # Reason code "low_confidence" when the threshold fired, else
+            # "always_human" / "classifier_requires_human".
+            reply = pipe.handle_escalation(classification, esc_reason or REASON_ALWAYS_HUMAN)
+        elif intent == Intent.GREETING.value:
+            reply = pipe.handle_greeting()
+        elif intent == Intent.SHIPPING_INFO.value:
+            reply = pipe.handle_shipping_info()
+        elif intent == Intent.PAYMENT_QUESTION.value:
+            reply = pipe.handle_payment_question()
+        elif intent == Intent.PRODUCT_AVAILABILITY.value:
+            reply = pipe.handle_product_availability()
+        elif intent == Intent.ORDER_STATUS.value:
+            reply = pipe.handle_order_status(normalized_ref)
+        elif intent == Intent.PRODUCT_QUESTION.value:
+            reply = pipe.handle_product_question()
+        elif intent == Intent.RETURN_REQUEST.value:
+            # Returns always create a structured ticket for staff review —
+            # this IS the human handoff for the return workflow.
+            reply = pipe.handle_return_request(normalized_ref, intent, classification)
+        else:  # defensive: should never happen after validation
+            reply = pipe.handle_escalation(classification, REASON_ALWAYS_HUMAN)
+    except IntegrationError as exc:
+        # Phase 9: the store backend failed (network, permissions, ...).
+        # Log it as a REAL failed event and answer honestly — never
+        # invent order/product data when the lookup did not run.
+        pipe.log(EVENT_STORE_BACKEND_ERROR, {
+            "backend": store.backend_name,
+            "error": f"{type(exc).__name__}: {str(exc)[:200]}",
+        }, status="failed")
+        reply = (
+            "Die Anbindung an den Shop ist derzeit gestört — ich kann gerade "
+            "keine Bestell- oder Produktdaten abrufen. Bitte versuchen Sie "
+            "es später erneut oder wenden Sie sich an unser Team. "
+            f"{_DEMO_DISCLAIMER}"
+        )
 
     # --- Step 4: persist assistant message + closing events ----------------
     conn.execute(
