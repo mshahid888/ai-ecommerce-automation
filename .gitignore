@@ -1,0 +1,29 @@
+# Secrets & local config
+.env
+.env.local
+*.pem
+*.key
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Databases (demo data is re-seeded; never commit DB files)
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

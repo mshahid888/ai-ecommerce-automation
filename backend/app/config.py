@@ -1,0 +1,66 @@
+"""Environment-based application settings (no pydantic-settings dependency).
+
+Phase 1: plain ``os.environ`` reads with sane defaults. A later phase may
+move this to ``pydantic-settings`` if the configuration surface grows.
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+
+def _env(name: str, default: str | None = None) -> str | None:
+    value = os.environ.get(name, default)
+    if value is None or (isinstance(value, str) and value.strip() == ""):
+        return default
+    return value
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = _env(name, None)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = _env(name, None)
+    try:
+        return int(raw) if raw is not None else default
+    except ValueError:
+        return default
+
+
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
+
+
+class Settings:
+    """Runtime configuration, read from the environment at import time."""
+
+    def __init__(self) -> None:
+        self.llm_provider: str = _env("LLM_PROVIDER", "mock") or "mock"
+        self.llm_model: str = (
+            _env("LLM_MODEL", "gemini-3.8-flash") or "gemini-3.8-flash"
+        )
+        self.llm_api_key: str | None = _env("LLM_API_KEY", None)
+        self.llm_base_url: str = (
+            _env("LLM_BASE_URL", "https://api.openai.com/v1")
+            or "https://api.openai.com/v1"
+        )
+        self.llm_timeout_seconds: int = _env_int("LLM_TIMEOUT_SECONDS", 15)
+        self.max_message_length: int = _env_int("MAX_MESSAGE_LENGTH", 2000)
+        self.max_body_bytes: int = _env_int("MAX_BODY_BYTES", 65536)
+        # Accept either "sqlite:///./data/demo.db" or a bare path.
+        raw_db = _env("DATABASE_URL", "sqlite:///./data/demo.db") or ""
+        if raw_db.startswith("sqlite:///"):
+            raw_db = raw_db[len("sqlite:///"):]
+        db_path = Path(raw_db)
+        if not db_path.is_absolute():
+            db_path = _BACKEND_ROOT / db_path
+        self.database_path: Path = db_path
+        self.demo_mode: bool = _env_bool("DEMO_MODE", True)
+        self.rate_limit_placeholder: None = None
+
+
+settings = Settings()

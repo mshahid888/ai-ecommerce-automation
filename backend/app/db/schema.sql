@@ -1,0 +1,130 @@
+-- AI E-Commerce Automation backend schema (Phase 1).
+--
+-- Multi-store from day one: EVERY business table carries `store_id`
+-- TEXT NOT NULL with a foreign key to stores(id). Repository code must
+-- always filter by store_id so tenants never see each other's rows.
+
+CREATE TABLE IF NOT EXISTS stores (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    slug        TEXT UNIQUE,
+    is_demo     INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS customers (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    store_id    TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    email       TEXT,
+    is_demo     INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS products (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    store_id        TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    sku             TEXT NOT NULL,
+    name            TEXT NOT NULL,
+    description     TEXT,
+    attributes_json TEXT,
+    is_demo         INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    UNIQUE(store_id, sku)
+);
+
+CREATE TABLE IF NOT EXISTS orders (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    store_id    TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    order_ref   TEXT NOT NULL,
+    customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+    status      TEXT NOT NULL DEFAULT 'processing',
+    carrier     TEXT,
+    tracking_ref TEXT,
+    eta_date    TEXT,
+    total_cents INTEGER NOT NULL DEFAULT 0,
+    currency    TEXT NOT NULL DEFAULT 'EUR',
+    is_demo     INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    UNIQUE(store_id, order_ref)
+);
+
+CREATE TABLE IF NOT EXISTS conversations (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    store_id    TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    session_key TEXT,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    role            TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+    content         TEXT NOT NULL,
+    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS tickets (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    store_id            TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    conversation_id     INTEGER REFERENCES conversations(id) ON DELETE SET NULL,
+    intent              TEXT,
+    order_ref           TEXT,
+    summary             TEXT,
+    status              TEXT NOT NULL DEFAULT 'open',
+    priority            TEXT NOT NULL DEFAULT 'normal',
+    escalation_reason   TEXT,
+    recommended_action  TEXT,
+    created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS return_requests (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    store_id    TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    order_ref   TEXT,
+    status      TEXT NOT NULL DEFAULT 'pending',
+    reason      TEXT,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS workflow_events (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    store_id        TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    conversation_id INTEGER REFERENCES conversations(id) ON DELETE SET NULL,
+    event_key       TEXT NOT NULL,
+    label_de        TEXT NOT NULL,
+    payload_json    TEXT,
+    status          TEXT NOT NULL DEFAULT 'done',
+    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS integration_credentials (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    store_id    TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    provider    TEXT NOT NULL,
+    label       TEXT,
+    secret_ref  TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS store_policies (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    store_id    TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    policy_key  TEXT NOT NULL,
+    policy_json TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    UNIQUE(store_id, policy_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_customers_store        ON customers(store_id);
+CREATE INDEX IF NOT EXISTS idx_products_store         ON products(store_id);
+CREATE INDEX IF NOT EXISTS idx_orders_store           ON orders(store_id);
+CREATE INDEX IF NOT EXISTS idx_orders_store_ref       ON orders(store_id, order_ref);
+CREATE INDEX IF NOT EXISTS idx_conversations_store    ON conversations(store_id);
+CREATE INDEX IF NOT EXISTS idx_messages_conversation  ON messages(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_store          ON tickets(store_id);
+CREATE INDEX IF NOT EXISTS idx_return_requests_store  ON return_requests(store_id);
+CREATE INDEX IF NOT EXISTS idx_events_store           ON workflow_events(store_id);
+CREATE INDEX IF NOT EXISTS idx_events_conversation    ON workflow_events(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_credentials_store      ON integration_credentials(store_id);
+CREATE INDEX IF NOT EXISTS idx_policies_store         ON store_policies(store_id);
